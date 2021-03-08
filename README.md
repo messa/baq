@@ -20,6 +20,7 @@ Primary goals of this project:
 - scripting & automation friendly – no interactive prompts
 - easy installation (not a single static binary unfortunately, but any distribution-default Python should suffice)
 - suitable for backing up terabytes of database backups (with a lot of multi-gigabyte files)
+- able to work with disk devices, LVM volumes and snapshots
 
 
 What this project does NOT do (at least right now)
