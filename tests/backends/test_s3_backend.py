@@ -18,7 +18,7 @@ def test_pytest_test_name(request):
     assert request.node.name == 'test_pytest_test_name'
 
 
-_global_test_date = datetime.utcnow().isoformat()
+_s3_prefix_date = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
 
 
 @fixture
@@ -27,7 +27,7 @@ def s3_prefix(request):
     if not prefix:
         skip('BAQ_TEST_S3_PREFIX not specified')
     prefix = prefix.strip('/')
-    prefix += f'/baq-pytest-{_global_test_date}-{getfqdn()}-{getpid()}-{request.node.name}'
+    prefix += f'/baq-pytest-{_s3_prefix_date}-{getfqdn()}-{getpid()}-{request.node.name}'
     return prefix
 
 
