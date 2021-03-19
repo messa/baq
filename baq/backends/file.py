@@ -33,6 +33,7 @@ class FileBackend:
             self.current_data_file_name = f'baq.{backup_id}.data.{self.next_data_file_number:05d}'
             logger.debug('Creating new data file %s', self.current_data_file_name)
             self.current_data_file = open(self.directory / self.current_data_file_name, mode='wb')
+        assert self.current_data_file_name.startswith(f'baq.{backup_id}.data.')
         df_pos = self.current_data_file.tell()
         self.current_data_file.write(chunk)
         self.current_data_file.flush()

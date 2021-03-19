@@ -3,6 +3,7 @@ Storage backend for AWS S3, and possibly other cloud services with similar API.
 '''
 
 from logging import getLogger
+from pathlib import Path
 
 from .helpers import DataChunkInfo
 
@@ -22,7 +23,7 @@ class S3Backend:
         assert isinstance(backup_id, str)
         assert isinstance(chunk, bytes)
         raise Exception('NIY')
-        return DataChunkInfo(name=self.current_data_file_name, offset=df_pos, size=df_size)
+        #return DataChunkInfo(name=self.current_data_file_name, offset=df_pos, size=df_size)
 
     def close_data_file(self):
         raise Exception('NIY')
