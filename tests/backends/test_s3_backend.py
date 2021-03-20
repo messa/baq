@@ -88,7 +88,6 @@ def test_s3_backend_read_data_chunk(s3_backend):
 
 
 def test_s3_backend_list_files(s3_backend):
-    skip()
     assert s3_backend.list_files() == []
     r = s3_backend.write_data_chunk('backup1', b'Hello!')
     s3_backend.close_data_file()

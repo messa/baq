@@ -121,7 +121,19 @@ class S3Backend:
                 Body=f)
 
     def list_files(self):
-        raise Exception('NIY')
+        names = []
+        paginator = self._client.get_paginator('list_objects_v2')
+        iterator = paginator.paginate(
+            Bucket=self._bucket_name,
+            Prefix=self._key_prefix)
+        for batch in iterator:
+            if not batch.get('Contents'):
+                continue
+            for record in batch['Contents']:
+                assert record['Key'].startswith(self._key_prefix + '/')
+                name = record['Key'][len(self._key_prefix + '/'):]
+                names.append(name)
+        return sorted(names)
 
     def retrieve_file(self, name, dst_path):
         assert isinstance(name, str)
