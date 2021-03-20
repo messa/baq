@@ -31,6 +31,7 @@ class FileBackend:
             self.current_data_file = None
         if not self.current_data_file:
             self.current_data_file_name = f'baq.{backup_id}.data.{self.next_data_file_number:05d}'
+            self.next_data_file_number += 1
             logger.debug('Creating new data file %s', self.current_data_file_name)
             self.current_data_file = open(self.directory / self.current_data_file_name, mode='wb')
         assert self.current_data_file_name.startswith(f'baq.{backup_id}.data.')

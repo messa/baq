@@ -53,16 +53,14 @@ def test_s3_access(s3_bucket_name, s3_prefix):
 @fixture
 def s3_backend(s3_bucket_name, s3_prefix):
     from baq.backends import S3Backend
-    skip()
-    return S3Backend()
+    return S3Backend(f's3://{s3_bucket_name}/{s3_prefix}')
 
 
 def test_s3_backend_init(s3_backend):
     assert s3_backend
 
 
-def test_s3_backend_write_data_chunk(s3_backend, temp_dir):
-    skip()
+def test_s3_backend_write_data_chunk(s3_backend, s3_bucket_name, s3_prefix):
     r = s3_backend.write_data_chunk('backup1', b'Hello!')
     assert r.name == 'baq.backup1.data.00000'
     assert r.offset == 0
@@ -72,16 +70,21 @@ def test_s3_backend_write_data_chunk(s3_backend, temp_dir):
     assert r.offset == 6
     assert r.size == 6
     s3_backend.close_data_file()
-    data_path = temp_dir / 'backup' / r.name
-    assert data_path.read_bytes() == b'Hello!Banana'
+    import boto3
+    s3_client = boto3.client('s3')
+    obj = s3_client.get_object(
+        Bucket=s3_bucket_name,
+        Key=s3_prefix + '/' + r.name)
+    obj_data = obj['Body'].read()
+    assert obj_data == b'Hello!Banana'
 
 
 def test_s3_backend_read_data_chunk(s3_backend):
-    skip()
-    r = s3_backend.write_data_chunk('backup1', b'Hello!')
+    r1 = s3_backend.write_data_chunk('backup1', b'Hello!')
+    r2 = s3_backend.write_data_chunk('backup1', b'banana')
     s3_backend.close_data_file()
-    data = s3_backend.read_data_chunk(r.name, r.offset, r.size)
-    assert data == b'Hello!'
+    assert s3_backend.read_data_chunk(r1.name, r1.offset, r1.size)  == b'Hello!'
+    assert s3_backend.read_data_chunk(r2.name, r2.offset, r2.size)  == b'banana'
 
 
 def test_s3_backend_list_files(s3_backend):
@@ -93,7 +96,6 @@ def test_s3_backend_list_files(s3_backend):
 
 
 def test_s3_backend_store_and_retrieve_file(s3_backend, temp_dir):
-    skip()
     (temp_dir / 'sample.txt').write_bytes(b'Some metadata')
     s3_backend.store_file(temp_dir / 'sample.txt', 'testfile')
     s3_backend.retrieve_file('testfile', temp_dir / 'sample2.txt')
