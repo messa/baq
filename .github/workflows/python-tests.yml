@@ -38,7 +38,7 @@ jobs:
       run: |
         curl -L -o age.tar.gz https://github.com/FiloSottile/age/releases/download/v1.0.0-rc.1/age-v1.0.0-rc.1-linux-amd64.tar.gz
         tar xzvf age.tar.gz
-        mv -vi age/age age/age-keygen /usr/local/bin
+        sudo mv -vi age/age age/age-keygen /usr/local/bin
         rm -rfv age age.tar.gz
     - name: Lint with flake8
       run: |
