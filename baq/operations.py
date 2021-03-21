@@ -2,6 +2,7 @@
 High-level implementation of main operations - backup and restore.
 '''
 
+from collections import namedtuple
 from contextlib import ExitStack
 from datetime import datetime
 from functools import partial
@@ -24,6 +25,8 @@ logger = getLogger(__name__)
 
 chunk_size = 2**20
 
+
+BackupResult = namedtuple('BackupResult', 'backup_id')
 
 def backup(src_path, backend, recipients, recipients_files):
     encryption_key = os.urandom(32)
@@ -60,8 +63,8 @@ def backup(src_path, backend, recipients, recipients_files):
                     'uid': dir_stat.st_uid,
                     'gid': dir_stat.st_gid,
                     'atime': dir_stat.st_atime,
-                    'mtime': dir_stat.st_mtime,
                     'ctime': dir_stat.st_ctime,
+                    'mtime': dir_stat.st_mtime,
                 }
             }))
             for file_name in files:
@@ -76,8 +79,8 @@ def backup(src_path, backend, recipients, recipients_files):
                             'uid': file_stat.st_uid,
                             'gid': file_stat.st_gid,
                             'atime': file_stat.st_atime,
-                            'mtime': file_stat.st_mtime,
                             'ctime': file_stat.st_ctime,
+                            'mtime': file_stat.st_mtime,
                         }
                     }))
                     while True:
@@ -115,6 +118,7 @@ def backup(src_path, backend, recipients, recipients_files):
         meta_file.close()
         backend.store_file(meta_path, name=meta_path.name)
     logger.info('Backup id %s done', backup_id)
+    return BackupResult(backup_id)
 
 
 def restore(src_path, backend, identity_files):

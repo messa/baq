@@ -1,3 +1,5 @@
+import gzip
+import json
 from pytest import fixture
 
 from baq.operations import backup, restore
@@ -18,8 +20,101 @@ def test_backup_and_restore(temp_dir, sample_age_key):
     (temp_dir / 'src/dir1').mkdir()
     (temp_dir / 'src/dir1/sample.txt').write_text('This is dir1/sample.txt\n')
     backend = FileBackend(temp_dir / 'backup_target')
-    backup(temp_dir / 'src', backend=backend, recipients=[sample_age_key], recipients_files=[])
+    backup_result = backup(temp_dir / 'src', backend=backend, recipients=[sample_age_key], recipients_files=[])
+    backup_id = backup_result.backup_id
     (temp_dir / 'restored').mkdir()
     restore(temp_dir / 'restored', backend, [temp_dir / 'age_key'])
     assert (temp_dir / 'src/hello.txt').read_bytes() == (temp_dir / 'restored/hello.txt').read_bytes()
     assert (temp_dir / 'src/dir1/sample.txt').read_bytes() == (temp_dir / 'restored/dir1/sample.txt').read_bytes()
+    assert sorted(p.name for p in (temp_dir / 'backup_target').iterdir()) == [
+        f'baq.{backup_id}.data.00000',
+        f'baq.{backup_id}.meta',
+    ]
+    meta_path = temp_dir / f'backup_target/baq.{backup_id}.meta'
+    meta_content = [json.loads(line) for line in gzip.decompress(meta_path.read_bytes()).splitlines()]
+    assert meta_content == [
+        {
+            'baq_backup': {
+                'backup_id': backup_id,
+                'date': meta_content[0]['baq_backup']['date'],
+                'encryption_keys': [
+                    {
+                        'backup_id': backup_id,
+                        'sha1': meta_content[0]['baq_backup']['encryption_keys'][0]['sha1'],
+                        'age_encrypted': meta_content[0]['baq_backup']['encryption_keys'][0]['age_encrypted'],
+                    }
+                ]
+            }
+        }, {
+            'directory': {
+                'atime': meta_content[1]['directory']['atime'],
+                'ctime': meta_content[1]['directory']['ctime'],
+                'mtime': meta_content[1]['directory']['mtime'],
+                'uid': meta_content[1]['directory']['uid'],
+                'gid': meta_content[1]['directory']['gid'],
+                'mode': meta_content[1]['directory']['mode'],
+                'path': '.',
+            }
+        }, {
+            'file': {
+                'atime': meta_content[2]['file']['atime'],
+                'ctime': meta_content[2]['file']['ctime'],
+                'mtime': meta_content[2]['file']['mtime'],
+                'uid': meta_content[2]['file']['uid'],
+                'gid': meta_content[2]['file']['gid'],
+                'mode': meta_content[2]['file']['mode'],
+                'path': 'hello.txt',
+            }
+        }, {
+            'content': {
+                'df_name': f'baq.{backup_id}.data.00000',
+                'df_offset': 0,
+                'df_size': 33,
+                'encryption_key_sha1': meta_content[0]['baq_backup']['encryption_keys'][0]['sha1'],
+                'offset': 0,
+                'sha3_512': 'adb798d7b4c94952e61c5d9beed5d3bf9443460f5d5a9f17eb32def95bc23ba8608f7630ea236958602500d06f5c19c64114c06ce09f1b92301b9c3fc73f0728',
+            }
+        }, {
+            'file_done': {
+                'sha3_512': 'adb798d7b4c94952e61c5d9beed5d3bf9443460f5d5a9f17eb32def95bc23ba8608f7630ea236958602500d06f5c19c64114c06ce09f1b92301b9c3fc73f0728',
+            }
+        }, {
+            'directory': {
+                'atime': meta_content[5]['directory']['atime'],
+                'ctime': meta_content[5]['directory']['ctime'],
+                'mtime': meta_content[5]['directory']['mtime'],
+                'uid': meta_content[5]['directory']['uid'],
+                'gid': meta_content[5]['directory']['gid'],
+                'mode': meta_content[5]['directory']['mode'],
+                'path': 'dir1',
+            }
+        }, {
+            'file': {
+                'atime': meta_content[6]['file']['atime'],
+                'ctime': meta_content[6]['file']['ctime'],
+                'mtime': meta_content[6]['file']['mtime'],
+                'uid': meta_content[6]['file']['uid'],
+                'gid': meta_content[6]['file']['gid'],
+                'mode': meta_content[6]['file']['mode'],
+                'path': 'dir1/sample.txt',
+            }
+        }, {
+            'content': {
+                'df_name': f'baq.{backup_id}.data.00000',
+                'df_offset': 33,
+                'df_size': 49,
+                'encryption_key_sha1': meta_content[0]['baq_backup']['encryption_keys'][0]['sha1'],
+                'offset': 0,
+                'sha3_512': 'd318a04d4a61bcb9f2f10a9523c30cfef69922fea0a3c4c1c7f5f01fed01cea9ee4a9a14e29126fadb0427eae42df1efa8a0cd18eb0d75a96241a1da432dbe8d'
+            }
+        }, {
+            'file_done': {
+                'sha3_512': 'd318a04d4a61bcb9f2f10a9523c30cfef69922fea0a3c4c1c7f5f01fed01cea9ee4a9a14e29126fadb0427eae42df1efa8a0cd18eb0d75a96241a1da432dbe8d'
+            }
+        }, {
+            'done': {
+                'backup_id': backup_id,
+                'date': meta_content[-1]['done']['date'],
+            }
+        }
+    ]
