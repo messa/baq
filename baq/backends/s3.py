@@ -26,7 +26,6 @@ class S3Backend:
         self._data_file_pos = None
         self._part_buffer = None
 
-
     def __repr__(self):
         return f'<{self.__class__.__name__} {self.directory}>'
 

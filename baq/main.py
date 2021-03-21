@@ -44,3 +44,4 @@ def setup_logging(verbose):
     basicConfig(
         format=log_format,
         level=DEBUG if verbose else INFO)
+    getLogger('botocore').setLevel(INFO)

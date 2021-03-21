@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 from reprlib import repr as smart_repr
 from tempfile import TemporaryDirectory
+from time import monotonic as monotime
 
 from .age_wrapper import encrypt_with_age
 from .chunk_adapter import ChunkAdapter
@@ -29,6 +30,7 @@ chunk_size = 2**20
 BackupResult = namedtuple('BackupResult', 'backup_id')
 
 def backup(src_path, backend, recipients, recipients_files):
+    t0 = monotime()
     encryption_key = os.urandom(32)
     encrypted_encryption_key = encrypt_with_age(encryption_key, recipients=recipients, recipients_files=recipients_files)
     encryption_key_sha1 = hashlib.new('sha1', encryption_key).hexdigest()
@@ -119,12 +121,13 @@ def backup(src_path, backend, recipients, recipients_files):
         }))
         meta_file.close()
         backend.store_file(meta_path, name=meta_path.name)
-    logger.info('Backup id %s done', backup_id)
+    logger.info('Backup id %s done in %.3f s', backup_id, monotime() - t0)
     return BackupResult(backup_id)
 
 
 def restore(src_path, backend, identity_files):
     # Restores TO the src_path - maybe there could be better naming? :)
+    t0 = monotime()
     backend_files = backend.list_files()
     meta_filename_regex = re.compile(r'^baq\.([0-9TZ]+)\.meta$')
     meta_filename = max(name for name in backend_files if meta_filename_regex.match(name))
@@ -154,7 +157,7 @@ def restore(src_path, backend, identity_files):
                 restore_file(src_path, record['file'], meta_file, adapter, key_manager)
             else:
                 raise Exception(f"Unknown metadata record: {json.dumps(record)}")
-    logger.info('Restore backup id %s done', backup_id)
+    logger.info('Restore backup id %s done in %.3f s', backup_id, monotime() - t0)
 
 
 def restore_directory(root_path, meta_record):
