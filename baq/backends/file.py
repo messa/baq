@@ -57,7 +57,11 @@ class FileBackend:
     def store_file(self, src_path, name):
         assert isinstance(src_path, Path)
         assert isinstance(name, str)
-        src_path.rename(self.directory / name)
+        try:
+            src_path.rename(self.directory / name)
+        except OSError:
+            # possibly "Invalid cross-device link", so let's copy it instead of rename
+            copyfile(src_path, self.directory / name)
         logger.debug('Saved file %s', self.directory / name)
 
     def list_files(self):
