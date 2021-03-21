@@ -17,6 +17,9 @@ class FileBackend:
 
     def __init__(self, directory):
         self.directory = Path(directory)
+        if not self.directory.is_dir():
+            logger.info('Creating directory %s', self.directory)
+            self.directory.mkdir()
         self.next_data_file_number = 0
         self.current_data_file = None
 
