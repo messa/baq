@@ -42,6 +42,8 @@ def backup(src_path, backend, recipients, recipients_files):
         meta_file = stack.enter_context(gzip.open(meta_path, mode='wb'))
         meta_file.write(to_json({
             'baq_backup': {
+                'file_format_version': 'v1',
+                # TODO: add baq version
                 'date': datetime.utcnow().strftime('%Y%m%dT%H%M%SZ'),
                 'backup_id': backup_id,
                 'encryption_keys': [
@@ -138,6 +140,7 @@ def restore(src_path, backend, identity_files):
         meta_file = stack.enter_context(gzip.open(meta_path, mode='rb'))
         header = json.loads(meta_file.readline())['baq_backup']
         logger.debug('Metadata header:\n%s', json.dumps(header, indent=2))
+        assert header['file_format_version'] == 'v1'
         assert backup_id == header['backup_id']
         key_manager = DecryptKeyManager(header['encryption_keys'], identity_files)
         while True:

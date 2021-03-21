@@ -35,6 +35,7 @@ def test_backup_and_restore(temp_dir, sample_age_key):
     assert meta_content == [
         {
             'baq_backup': {
+                'file_format_version': 'v1',
                 'backup_id': backup_id,
                 'date': meta_content[0]['baq_backup']['date'],
                 'encryption_keys': [
