@@ -57,12 +57,15 @@ class FileBackend:
     def store_file(self, src_path, name):
         assert isinstance(src_path, Path)
         assert isinstance(name, str)
+        dst_path = self.directory / name
+        if dst_path.exists():
+            raise Exception('File already exists: {}'.format(dst_path))
         try:
-            src_path.rename(self.directory / name)
+            src_path.rename(dst_path)
         except OSError:
             # possibly "Invalid cross-device link", so let's copy it instead of rename
-            copyfile(src_path, self.directory / name)
-        logger.debug('Saved file %s', self.directory / name)
+            copyfile(src_path, dst_path)
+        logger.debug('Saved file %s', dst_path)
 
     def list_files(self):
         return sorted(p.name for p in self.directory.iterdir() if  p.name.startswith('baq.'))
