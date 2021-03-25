@@ -183,7 +183,7 @@ def load_previous_backup_for_reuse(backend, temp_dir, reuse_backup_count):
                             'encryption_key_sha1': file_record['content']['encryption_key_sha1'],
                         }
                     else:
-                        raise Exception(f"Unknown metadata record: {json.dumps(fil_record)}")
+                        raise Exception(f"Unknown metadata record: {json.dumps(file_record)}")
                     del file_record
             else:
                 raise Exception(f"Unknown metadata record: {json.dumps(record)}")
