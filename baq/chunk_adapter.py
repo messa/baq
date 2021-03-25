@@ -48,14 +48,10 @@ class ChunkAdapter:
         raise Exception('Unknown compression flag: {!r}'.format(compression_flag))
 
     def _encrypt_chunk(self, chunk, encryption_key):
-        if encryption_key is None:
-            return '0', chunk
+        assert encryption_key
         return '1', encrypt_aes_cbc(chunk, encryption_key)
 
     def _decrypt_chunk(self, encryption_flag, chunk, encryption_key):
-        if encryption_flag == '0':
-            return chunk
         if encryption_flag == '1':
             return decrypt_aes_cbc(chunk, encryption_key)
         raise Exception('Unknown encryption flag: {!r}'.format(encryption_flag))
-
