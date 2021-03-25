@@ -36,7 +36,7 @@ class ChunkAdapter:
     def _compress_chunk(self, chunk):
         chunk_z = zlib.compress(chunk)
         if len(chunk_z) < len(chunk):
-            logger.debug('Chunk compression ratio (zlib): %5.2f %%', 100 * len(chunk_z) / len(chunk))
+            #logger.debug('Chunk compression ratio (zlib): %5.2f %%', 100 * len(chunk_z) / len(chunk))
             return '1', chunk_z
         return '0', chunk
 

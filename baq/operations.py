@@ -55,7 +55,7 @@ def backup(src_path, backend, recipients, recipients_files, reuse_backup_count=3
             age_encrypted_encryption_key=age_encrypted_encryption_key,
             reuse_encryption_keys=reuse_encryption_keys)))
         for dir_path, dirs, files, dir_fd in os.fwalk(src_path, follow_symlinks=False):
-            logger.debug('fwalk -> %s, %s, %s, %s', dir_path, dirs, files, dir_fd)
+            #logger.debug('fwalk -> %s, %s, %s, %s', dir_path, dirs, files, dir_fd)
             dir_stat = os.fstat(dir_fd)
             meta_file.write(to_json({
                 'directory': {
@@ -69,7 +69,7 @@ def backup(src_path, backend, recipients, recipients_files, reuse_backup_count=3
                 }
             }))
             for file_name in files:
-                logger.debug('Processing file %s', file_name)
+                logger.debug('Processing file %s/%s', dir_path, file_name)
                 with open(file_name, mode='rb', opener=partial(os.open, dir_fd=dir_fd)) as file_stream:
                     file_hash = hashlib.new('sha3_512')
                     file_stat = os.fstat(file_stream.fileno())
@@ -89,7 +89,7 @@ def backup(src_path, backend, recipients, recipients_files, reuse_backup_count=3
                         chunk = file_stream.read(chunk_size)
                         if not chunk:
                             break
-                        logger.debug('Read %d bytes from file %s pos %s: %s', len(chunk), file_name, pos, smart_repr(chunk))
+                        #logger.debug('Read %d bytes from file %s pos %s: %s', len(chunk), file_name, pos, smart_repr(chunk))
                         file_hash.update(chunk)
                         chunk_hash = hashlib.new('sha3_512', chunk).digest()
 
@@ -156,7 +156,7 @@ def load_previous_backup_for_reuse(backend, temp_dir, reuse_backup_count):
     backend.retrieve_file(reuse_meta_filename, reuse_meta_path)
     with gzip.open(reuse_meta_path, mode='rb') as reuse_meta_file:
         reuse_header = json.loads(reuse_meta_file.readline())['baq_backup']
-        logger.debug('Backup %s metadata header:\n%s', reuse_backup_id, json.dumps(reuse_header, indent=2))
+        #logger.debug('Backup %s metadata header:\n%s', reuse_backup_id, json.dumps(reuse_header, indent=2))
         assert reuse_header['file_format_version'] == 'v1'
         assert reuse_backup_id == reuse_header['backup_id']
         assert reuse_header['encryption_keys'][0]['backup_id'] == reuse_backup_id
@@ -164,7 +164,7 @@ def load_previous_backup_for_reuse(backend, temp_dir, reuse_backup_count):
         reuse_encryption_keys_sha1 = {k['sha1'] for k in reuse_encryption_keys}
         while True:
             record = json.loads(reuse_meta_file.readline())
-            logger.debug('Processing: %s', record)
+            #logger.debug('Processing: %s', record)
             if record.get('done'):
                 break
             elif record.get('directory'):
@@ -286,7 +286,7 @@ def restore_file(root_path, meta_record, meta_file, backend, key_manager):
 def to_json(obj):
     assert isinstance(obj, dict)
     line = json.dumps(obj).encode('utf-8')
-    logger.debug('to_json: %s', line.decode())
+    #logger.debug('to_json: %s', line.decode())
     assert json.loads(line) == obj
     assert b'\n' not in line
     return line + b'\n'
