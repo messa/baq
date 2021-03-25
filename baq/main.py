@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 from logging import getLogger
 from pathlib import Path
+import sys
 
 from .operations import backup, restore
 
@@ -16,6 +17,7 @@ def baq_main():
     p.add_argument('--restore', action='store_true')
     p.add_argument('--recipient', '-r', action='append')
     p.add_argument('--recipients-file', '-R', action='append')
+    p.add_argument('--skip-encryption', action='store_true')
     p.add_argument('--identity', '-i', action='append')
     p.add_argument('path')
     p.add_argument('destination')
@@ -26,6 +28,18 @@ def baq_main():
     if args.restore:
         restore(src_path, backend, args.identity)
     else:
+        if not args.recipient and not args.recipients_file:
+            if not args.skip_encryption:
+                msg = 'ERROR: No --recipient or --recipients-file specified. '
+                msg += 'Do you really want to skip the encryption protection? '
+                msg += 'If yes, please add parameter --skip-encryption.'
+                # The data file chunks will still be encrypted with AES key,
+                # so the data itself will not be readable without the metadata file.
+                # But the AES key will be stored in metadata file in plaintext, not age-encrypted.
+                sys.exit(msg)
+        else:
+            if args.skip_encryption:
+                sys.exit('ERROR: Cannot combine --skip-encryption with --recipient or --recipients-file.')
         backup(src_path, backend, args.recipient, args.recipients_file)
 
 
