@@ -14,7 +14,7 @@ log_format = '%(asctime)s [%(process)d] %(name)-17s %(levelname)5s: %(message)s'
 def baq_main():
     p = ArgumentParser()
     p.add_argument('--verbose', '-v', action='store_true')
-    p.add_argument('--restore', action='store_true')
+    p.add_argument('--restore', metavar='BACKUP_ID')
     p.add_argument('--recipient', '-r', action='append')
     p.add_argument('--recipients-file', '-R', action='append')
     p.add_argument('--skip-encryption', action='store_true')
@@ -26,7 +26,7 @@ def baq_main():
     backend = get_destination_backend(args.destination)
     src_path = Path(args.path).resolve()
     if args.restore:
-        restore(src_path, backend, args.identity)
+        restore(src_path, backend, args.restore, args.identity)
     else:
         if not args.recipient and not args.recipients_file:
             if not args.skip_encryption:

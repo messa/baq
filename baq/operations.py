@@ -212,14 +212,11 @@ def generate_header(backup_id, encryption_key, encryption_key_sha1, age_encrypte
     return header
 
 
-def restore(src_path, backend, identity_files):
+def restore(src_path, backend, backup_id, identity_files):
     # Restores TO the src_path - maybe there could be better naming? :)
-    # TODO: let user choose what backup_id to restore
     t0 = monotime()
     backend_files = backend.list_files()
-    meta_filename_regex = re.compile(r'^baq\.([0-9TZ]+)\.meta$')
-    meta_filename = max(name for name in backend_files if meta_filename_regex.match(name))
-    backup_id, = meta_filename_regex.match(meta_filename).groups()
+    meta_filename = f'baq.{backup_id}.meta'
     adapter = ChunkAdapter(backend)
     logger.info('Restoring backup id %s from %s to %s', backup_id, backend, src_path)
     with ExitStack() as stack:

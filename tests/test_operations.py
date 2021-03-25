@@ -26,7 +26,7 @@ def test_backup_and_restore_without_encryption(temp_dir):
     backup_result = backup(temp_dir / 'src', backend=backend, recipients=[], recipients_files=[])
     backup_id = backup_result.backup_id
     (temp_dir / 'restored').mkdir()
-    restore(temp_dir / 'restored', backend, [])
+    restore(temp_dir / 'restored', backend, backup_id, [])
     assert (temp_dir / 'src/hello.txt').read_bytes() == (temp_dir / 'restored/hello.txt').read_bytes()
     assert (temp_dir / 'src/dir1/sample.txt').read_bytes() == (temp_dir / 'restored/dir1/sample.txt').read_bytes()
     assert sorted(p.name for p in (temp_dir / 'backup_target').iterdir()) == [
@@ -44,7 +44,7 @@ def test_backup_and_restore(temp_dir, sample_age_key):
     backup_result = backup(temp_dir / 'src', backend=backend, recipients=[sample_age_key], recipients_files=[])
     backup_id = backup_result.backup_id
     (temp_dir / 'restored').mkdir()
-    restore(temp_dir / 'restored', backend, [temp_dir / 'age_key'])
+    restore(temp_dir / 'restored', backend, backup_id, [temp_dir / 'age_key'])
     assert (temp_dir / 'src/hello.txt').read_bytes() == (temp_dir / 'restored/hello.txt').read_bytes()
     assert (temp_dir / 'src/dir1/sample.txt').read_bytes() == (temp_dir / 'restored/dir1/sample.txt').read_bytes()
     assert sorted(p.name for p in (temp_dir / 'backup_target').iterdir()) == [
@@ -161,6 +161,6 @@ def test_incremental_backup_and_restore(temp_dir, sample_age_key):
     assert (temp_dir / 'backup_target' / f'baq.{backup_id_2}.data.00000').is_file()
     assert (temp_dir / 'backup_target' / f'baq.{backup_id_2}.data.00000').stat().st_size < 1500000
     (temp_dir / 'restored').mkdir()
-    restore(temp_dir / 'restored', backend, [temp_dir / 'age_key'])
+    restore(temp_dir / 'restored', backend, backup_id_2, [temp_dir / 'age_key'])
     assert (temp_dir / 'src/hello.txt').read_bytes() == (temp_dir / 'restored/hello.txt').read_bytes()
     #assert (temp_dir / 'src/dir1/sample.txt').read_bytes() == (temp_dir / 'restored/dir1/sample.txt').read_bytes()
