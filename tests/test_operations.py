@@ -14,6 +14,24 @@ def sample_age_key(temp_dir):
     return public_key
 
 
+def test_backup_and_restore_without_encryption(temp_dir):
+    (temp_dir / 'src').mkdir()
+    (temp_dir / 'src/hello.txt').write_text('Hello, World!\n')
+    (temp_dir / 'src/dir1').mkdir()
+    (temp_dir / 'src/dir1/sample.txt').write_text('This is dir1/sample.txt\n')
+    backend = FileBackend(temp_dir / 'backup_target')
+    backup_result = backup(temp_dir / 'src', backend=backend, recipients=[], recipients_files=[])
+    backup_id = backup_result.backup_id
+    (temp_dir / 'restored').mkdir()
+    restore(temp_dir / 'restored', backend, [])
+    assert (temp_dir / 'src/hello.txt').read_bytes() == (temp_dir / 'restored/hello.txt').read_bytes()
+    assert (temp_dir / 'src/dir1/sample.txt').read_bytes() == (temp_dir / 'restored/dir1/sample.txt').read_bytes()
+    assert sorted(p.name for p in (temp_dir / 'backup_target').iterdir()) == [
+        f'baq.{backup_id}.data.00000',
+        f'baq.{backup_id}.meta',
+    ]
+
+
 def test_backup_and_restore(temp_dir, sample_age_key):
     (temp_dir / 'src').mkdir()
     (temp_dir / 'src/hello.txt').write_text('Hello, World!\n')

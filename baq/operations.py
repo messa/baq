@@ -29,11 +29,16 @@ chunk_size = 2**20
 
 BackupResult = namedtuple('BackupResult', 'backup_id')
 
+
 def backup(src_path, backend, recipients, recipients_files):
     t0 = monotime()
     encryption_key = os.urandom(32)
-    encrypted_encryption_key = encrypt_with_age(encryption_key, recipients=recipients, recipients_files=recipients_files)
     encryption_key_sha1 = hashlib.new('sha1', encryption_key).hexdigest()
+    if recipients or recipients_files:
+        age_encrypted_encryption_key = encrypt_with_age(encryption_key, recipients=recipients, recipients_files=recipients_files)
+    else:
+        logger.info('No recipients specified - the data file AES key will be stored in metadata file unencrypted')
+        age_encrypted_encryption_key = None
     backup_id = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
     adapter = ChunkAdapter(backend)
     logger.info('Backing up %s to %s - backup id %s', src_path, backend, backup_id)
@@ -42,21 +47,11 @@ def backup(src_path, backend, recipients, recipients_files):
         temp_dir = Path(stack.enter_context(TemporaryDirectory(prefix=f'baq.{backup_id}.')))
         meta_path = temp_dir / f'baq.{backup_id}.meta'
         meta_file = stack.enter_context(gzip.open(meta_path, mode='wb'))
-        meta_file.write(to_json({
-            'baq_backup': {
-                'file_format_version': 'v1',
-                # TODO: add baq version
-                'date': datetime.utcnow().strftime('%Y%m%dT%H%M%SZ'),
-                'backup_id': backup_id,
-                'encryption_keys': [
-                    {
-                        'backup_id': backup_id,
-                        'sha1': encryption_key_sha1,
-                        'age_encrypted': encrypted_encryption_key,
-                    },
-                ],
-            }
-        }))
+        meta_file.write(to_json(generate_header(
+            backup_id=backup_id,
+            encryption_key=encryption_key,
+            encryption_key_sha1=encryption_key_sha1,
+            age_encrypted_encryption_key=age_encrypted_encryption_key)))
         for dir_path, dirs, files, dir_fd in os.fwalk(src_path, follow_symlinks=False):
             logger.debug('fwalk -> %s, %s, %s, %s', dir_path, dirs, files, dir_fd)
             dir_stat = os.fstat(dir_fd)
@@ -123,6 +118,27 @@ def backup(src_path, backend, recipients, recipients_files):
         backend.store_file(meta_path, name=meta_path.name)
     logger.info('Backup id %s done in %.3f s', backup_id, monotime() - t0)
     return BackupResult(backup_id)
+
+
+def generate_header(backup_id, encryption_key, encryption_key_sha1, age_encrypted_encryption_key):
+    current_encryption_key = {
+        'backup_id': backup_id,
+        'sha1': encryption_key_sha1,
+    }
+    if age_encrypted_encryption_key:
+        current_encryption_key['age_encrypted'] = age_encrypted_encryption_key
+    else:
+        current_encryption_key['hex'] = encryption_key.hex()
+    header = {
+        'baq_backup': {
+            'file_format_version': 'v1',
+            # TODO: add baq version
+            'date': datetime.utcnow().strftime('%Y%m%dT%H%M%SZ'),
+            'backup_id': backup_id,
+            'encryption_keys': [current_encryption_key],
+        }
+    }
+    return header
 
 
 def restore(src_path, backend, identity_files):

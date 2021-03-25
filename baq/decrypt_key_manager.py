@@ -19,7 +19,13 @@ class DecryptKeyManager:
             open_key = None
             for key_data in self.encryption_keys:
                 if key_data['sha1'] == key_hash:
-                    open_key = decrypt_with_age(key_data['age_encrypted'], self.identity_files)
+                    if key_data.get('hex'):
+                        open_key = bytes.fromhex(key_data['hex'])
+                    elif key_data.get('age_encrypted'):
+                        open_key = decrypt_with_age(key_data['age_encrypted'], self.identity_files)
+                    else:
+                        # there should always be hex or age_encrypted
+                        raise Exception('Unknown key data structure')
                     break
             if not open_key:
                 raise Exception(f"Could not open key {key_hash}")
