@@ -69,13 +69,14 @@ def backup(src_path, backend, recipients, recipients_files, reuse_backup_count=3
                 }
             }))
             for file_name in files:
-                logger.debug('Processing file %s/%s', dir_path, file_name)
+                file_path = str(Path(dir_path).relative_to(src_path) / file_name)
+                logger.debug('Processing file %s', file_path)
                 with open(file_name, mode='rb', opener=partial(os.open, dir_fd=dir_fd)) as file_stream:
                     file_hash = hashlib.new('sha3_512')
                     file_stat = os.fstat(file_stream.fileno())
                     meta_file.write(to_json({
                         'file': {
-                            'path': str(Path(dir_path).relative_to(src_path) / file_name),
+                            'path': file_path,
                             'mode': file_stat.st_mode,
                             'uid': file_stat.st_uid,
                             'gid': file_stat.st_gid,
