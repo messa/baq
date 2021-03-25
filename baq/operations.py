@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import re
 from reprlib import repr as smart_repr
+import stat
 from tempfile import TemporaryDirectory
 from time import monotonic as monotime
 
@@ -30,7 +31,7 @@ chunk_size = 2**20
 BackupResult = namedtuple('BackupResult', 'backup_id')
 
 
-def backup(src_path, backend, recipients, recipients_files, reuse_backup_count=30):
+def backup(src_path, backend, recipients, recipients_files, reuse_backup_count=30, follow_symlinks=False):
     t0 = monotime()
     encryption_key = os.urandom(32)
     encryption_key_sha1 = hashlib.new('sha1', encryption_key).hexdigest()
@@ -54,7 +55,7 @@ def backup(src_path, backend, recipients, recipients_files, reuse_backup_count=3
             encryption_key_sha1=encryption_key_sha1,
             age_encrypted_encryption_key=age_encrypted_encryption_key,
             reuse_encryption_keys=reuse_encryption_keys)))
-        for dir_path, dirs, files, dir_fd in os.fwalk(src_path, follow_symlinks=False):
+        for dir_path, dirs, files, dir_fd in os.fwalk(src_path, follow_symlinks=follow_symlinks):
             #logger.debug('fwalk -> %s, %s, %s, %s', dir_path, dirs, files, dir_fd)
             dir_stat = os.fstat(dir_fd)
             meta_file.write(to_json({
@@ -70,8 +71,41 @@ def backup(src_path, backend, recipients, recipients_files, reuse_backup_count=3
             }))
             for file_name in files:
                 file_path = str(Path(dir_path).relative_to(src_path) / file_name)
-                logger.debug('Processing file %s', file_path)
-                with open(file_name, mode='rb', opener=partial(os.open, dir_fd=dir_fd)) as file_stream:
+                try:
+                    file_stat = os.stat(file_name, dir_fd=dir_fd, follow_symlinks=follow_symlinks)
+                except FileNotFoundError as e:
+                    logger.warning('Cannot stat file %s: %s', file_path, e)
+                    continue
+                if stat.S_ISLNK(file_stat.st_mode):
+                    try:
+                        symlink_target = os.readlink(file_name, dir_fd=dir_fd)
+                    except Exception as e:
+                        logger.warning('Cannot read symlink target: %s - %r', file_path, e)
+                    else:
+                        meta_file.write(to_json({
+                            'symlink': {
+                                'path': file_path,
+                                'target': symlink_target,
+                                'mode': file_stat.st_mode,
+                                'uid': file_stat.st_uid,
+                                'gid': file_stat.st_gid,
+                                'atime': file_stat.st_atime,
+                                'ctime': file_stat.st_ctime,
+                                'mtime': file_stat.st_mtime,
+                            }
+                        }))
+                    continue
+                elif not stat.S_ISREG(file_stat.st_mode):
+                    logger.warning('Skipping file with unknown type: %s', file_path)
+                    continue
+                assert stat.S_ISREG(file_stat.st_mode)
+                try:
+                    file_stream = open(file_name, mode='rb', opener=partial(os.open, dir_fd=dir_fd))
+                except PermissionError as e:
+                    logger.warning('Cannot open file %s: %s', file_path, e)
+                    continue
+                with file_stream:
+                    logger.debug('Processing file %s', file_path)
                     file_hash = hashlib.new('sha3_512')
                     file_stat = os.fstat(file_stream.fileno())
                     meta_file.write(to_json({
@@ -169,6 +203,8 @@ def load_previous_backup_for_reuse(backend, temp_dir, reuse_backup_count):
             if record.get('done'):
                 break
             elif record.get('directory'):
+                pass
+            elif record.get('symlink'):
                 pass
             elif record.get('file'):
                 while True:
