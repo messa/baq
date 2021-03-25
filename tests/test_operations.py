@@ -1,6 +1,9 @@
+from datetime import datetime
 import gzip
 import json
+import os
 from pytest import fixture
+from time import sleep
 
 from baq.operations import backup, restore
 from baq.backends import FileBackend
@@ -137,3 +140,27 @@ def test_backup_and_restore(temp_dir, sample_age_key):
             }
         }
     ]
+
+
+def test_incremental_backup_and_restore(temp_dir, sample_age_key):
+    (temp_dir / 'src').mkdir()
+    (temp_dir / 'src/hello.txt').write_text('Hello, World!\n')
+    (temp_dir / 'src/big').write_bytes(os.urandom(3 * 2**20))
+    backend = FileBackend(temp_dir / 'backup_target')
+    backup_result = backup(temp_dir / 'src', backend=backend, recipients=[sample_age_key], recipients_files=[])
+    backup_id_1 = backup_result.backup_id
+    while datetime.utcnow().strftime('%Y%m%dT%H%M%SZ') == backup_result.backup_id:
+        sleep(0.05)
+    with (temp_dir / 'src/big').open(mode='r+b') as f:
+        f.write(os.urandom(100))
+    backend = FileBackend(temp_dir / 'backup_target')
+    backup_result = backup(temp_dir / 'src', backend=backend, recipients=[sample_age_key], recipients_files=[])
+    backup_id_2 = backup_result.backup_id
+    assert (temp_dir / 'backup_target' / f'baq.{backup_id_1}.data.00000').is_file()
+    assert (temp_dir / 'backup_target' / f'baq.{backup_id_1}.data.00000').stat().st_size > 3000000
+    assert (temp_dir / 'backup_target' / f'baq.{backup_id_2}.data.00000').is_file()
+    assert (temp_dir / 'backup_target' / f'baq.{backup_id_2}.data.00000').stat().st_size < 1500000
+    (temp_dir / 'restored').mkdir()
+    restore(temp_dir / 'restored', backend, [temp_dir / 'age_key'])
+    assert (temp_dir / 'src/hello.txt').read_bytes() == (temp_dir / 'restored/hello.txt').read_bytes()
+    #assert (temp_dir / 'src/dir1/sample.txt').read_bytes() == (temp_dir / 'restored/dir1/sample.txt').read_bytes()

@@ -30,7 +30,7 @@ chunk_size = 2**20
 BackupResult = namedtuple('BackupResult', 'backup_id')
 
 
-def backup(src_path, backend, recipients, recipients_files):
+def backup(src_path, backend, recipients, recipients_files, reuse_backup_count=30):
     t0 = monotime()
     encryption_key = os.urandom(32)
     encryption_key_sha1 = hashlib.new('sha1', encryption_key).hexdigest()
@@ -45,13 +45,15 @@ def backup(src_path, backend, recipients, recipients_files):
     with ExitStack() as stack:
         stack.callback(backend.close_data_file)
         temp_dir = Path(stack.enter_context(TemporaryDirectory(prefix=f'baq.{backup_id}.')))
+        reuse_encryption_keys, reuse_blocks = load_previous_backup_for_reuse(backend, temp_dir, reuse_backup_count)
         meta_path = temp_dir / f'baq.{backup_id}.meta'
         meta_file = stack.enter_context(gzip.open(meta_path, mode='wb'))
         meta_file.write(to_json(generate_header(
             backup_id=backup_id,
             encryption_key=encryption_key,
             encryption_key_sha1=encryption_key_sha1,
-            age_encrypted_encryption_key=age_encrypted_encryption_key)))
+            age_encrypted_encryption_key=age_encrypted_encryption_key,
+            reuse_encryption_keys=reuse_encryption_keys)))
         for dir_path, dirs, files, dir_fd in os.fwalk(src_path, follow_symlinks=False):
             logger.debug('fwalk -> %s, %s, %s, %s', dir_path, dirs, files, dir_fd)
             dir_stat = os.fstat(dir_fd)
@@ -89,19 +91,38 @@ def backup(src_path, backend, recipients, recipients_files):
                             break
                         logger.debug('Read %d bytes from file %s pos %s: %s', len(chunk), file_name, pos, smart_repr(chunk))
                         file_hash.update(chunk)
-                        chunk_hash = hashlib.new('sha3_512', chunk).hexdigest()
-                        chunk_df = adapter.write_data_chunk(backup_id, chunk, encryption_key=encryption_key)
-                        del chunk
-                        meta_file.write(to_json({
-                            'content': {
-                                'offset': pos,
-                                'sha3_512': chunk_hash,
+                        chunk_hash = hashlib.new('sha3_512', chunk).digest()
+
+                        if chunk_hash in reuse_blocks:
+                            meta_file.write(to_json({
+                                'content': {
+                                    'offset': pos,
+                                    'sha3_512': chunk_hash.hex(),
+                                    'df_name': reuse_blocks[chunk_hash]['df_name'],
+                                    'df_offset': reuse_blocks[chunk_hash]['df_offset'],
+                                    'df_size': reuse_blocks[chunk_hash]['df_size'],
+                                    'encryption_key_sha1': reuse_blocks[chunk_hash]['encryption_key_sha1'],
+                                }
+                            }))
+                        else:
+                            chunk_df = adapter.write_data_chunk(backup_id, chunk, encryption_key=encryption_key)
+                            meta_file.write(to_json({
+                                'content': {
+                                    'offset': pos,
+                                    'sha3_512': chunk_hash.hex(),
+                                    'df_name': chunk_df.name,
+                                    'df_offset': chunk_df.offset,
+                                    'df_size': chunk_df.size,
+                                    'encryption_key_sha1': encryption_key_sha1,
+                                }
+                            }))
+                            reuse_blocks[chunk_hash] = {
                                 'df_name': chunk_df.name,
                                 'df_offset': chunk_df.offset,
                                 'df_size': chunk_df.size,
                                 'encryption_key_sha1': encryption_key_sha1,
                             }
-                        }))
+                        del chunk
                     meta_file.write(to_json({
                         'file_done': {
                             'sha3_512': file_hash.hexdigest(),
@@ -120,7 +141,57 @@ def backup(src_path, backend, recipients, recipients_files):
     return BackupResult(backup_id)
 
 
-def generate_header(backup_id, encryption_key, encryption_key_sha1, age_encrypted_encryption_key):
+def load_previous_backup_for_reuse(backend, temp_dir, reuse_backup_count):
+    reuse_encryption_keys = []
+    reuse_blocks = {}
+    meta_filename_regex = re.compile(r'^baq\.([0-9TZ]+)\.meta$')
+    backend_files = backend.list_files()
+    meta_filenames = [name for name in backend_files if meta_filename_regex.match(name)]
+    reuse_meta_filename = max(meta_filenames) if meta_filenames else None
+    if not reuse_meta_filename:
+        return reuse_encryption_keys, reuse_blocks
+    reuse_backup_id, = meta_filename_regex.match(reuse_meta_filename).groups()
+    logger.info('Loading metadata of backup id %s to be reused for incremental backup', reuse_backup_id)
+    reuse_meta_path = temp_dir / reuse_meta_filename
+    backend.retrieve_file(reuse_meta_filename, reuse_meta_path)
+    with gzip.open(reuse_meta_path, mode='rb') as reuse_meta_file:
+        reuse_header = json.loads(reuse_meta_file.readline())['baq_backup']
+        logger.debug('Backup %s metadata header:\n%s', reuse_backup_id, json.dumps(reuse_header, indent=2))
+        assert reuse_header['file_format_version'] == 'v1'
+        assert reuse_backup_id == reuse_header['backup_id']
+        assert reuse_header['encryption_keys'][0]['backup_id'] == reuse_backup_id
+        reuse_encryption_keys = reuse_header['encryption_keys'][:reuse_backup_count]
+        reuse_encryption_keys_sha1 = {k['sha1'] for k in reuse_encryption_keys}
+        while True:
+            record = json.loads(reuse_meta_file.readline())
+            logger.debug('Processing: %s', record)
+            if record.get('done'):
+                break
+            elif record.get('directory'):
+                pass
+            elif record.get('file'):
+                while True:
+                    file_record = json.loads(reuse_meta_file.readline())
+                    if file_record.get('file_done'):
+                        break
+                    elif file_record.get('content'):
+                        if file_record['content']['encryption_key_sha1'] in reuse_encryption_keys_sha1:
+                            reuse_blocks[bytes.fromhex(file_record['content']['sha3_512'])] = {
+                            'df_name': file_record['content']['df_name'],
+                            'df_offset': file_record['content']['df_offset'],
+                            'df_size': file_record['content']['df_size'],
+                            'encryption_key_sha1': file_record['content']['encryption_key_sha1'],
+                        }
+                    else:
+                        raise Exception(f"Unknown metadata record: {json.dumps(fil_record)}")
+                    del file_record
+            else:
+                raise Exception(f"Unknown metadata record: {json.dumps(record)}")
+            del record
+    return reuse_encryption_keys, reuse_blocks
+
+
+def generate_header(backup_id, encryption_key, encryption_key_sha1, age_encrypted_encryption_key, reuse_encryption_keys):
     current_encryption_key = {
         'backup_id': backup_id,
         'sha1': encryption_key_sha1,
@@ -135,7 +206,7 @@ def generate_header(backup_id, encryption_key, encryption_key_sha1, age_encrypte
             # TODO: add baq version
             'date': datetime.utcnow().strftime('%Y%m%dT%H%M%SZ'),
             'backup_id': backup_id,
-            'encryption_keys': [current_encryption_key],
+            'encryption_keys': [current_encryption_key, *reuse_encryption_keys],
         }
     }
     return header
@@ -143,6 +214,7 @@ def generate_header(backup_id, encryption_key, encryption_key_sha1, age_encrypte
 
 def restore(src_path, backend, identity_files):
     # Restores TO the src_path - maybe there could be better naming? :)
+    # TODO: let user choose what backup_id to restore
     t0 = monotime()
     backend_files = backend.list_files()
     meta_filename_regex = re.compile(r'^baq\.([0-9TZ]+)\.meta$')
