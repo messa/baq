@@ -546,15 +546,20 @@ class S3DataCollectorFile:
         self.close_fut.result()
 
     def _create_multipart_upload(self):
-        result = self.s3_client.create_multipart_upload(
-            ACL='private',
-            Bucket=self.bucket_name,
-            Key=self.key,
-            ChecksumAlgorithm='SHA1',
-            StorageClass=self.storage_class)
-        with self.mutex:
-            assert self.upload_id is None
-            self.upload_id = result['UploadId']
+        try:
+            result = self.s3_client.create_multipart_upload(
+                ACL='private',
+                Bucket=self.bucket_name,
+                Key=self.key,
+                ChecksumAlgorithm='SHA1',
+                StorageClass=self.storage_class)
+            with self.mutex:
+                assert self.upload_id is None
+                self.upload_id = result['UploadId']
+        except Exception as e:
+            # early logging - otherwise the exception would be logged after other threads cleanup
+            logger.exception('Failed to create multipart upload: %r', e)
+            raise e
 
     def tell(self):
         with self.mutex:
@@ -588,22 +593,27 @@ class S3DataCollectorFile:
         self.part_buffer = BytesIO()
 
     def _upload(self, part_data, part_number):
-        with self.waiting_upload_count_cond:
-            self.waiting_upload_count -= 1
-            self.waiting_upload_count_cond.notify_all()
-        self.create_fut.result()
-        assert self.upload_id
-        logger.debug('Multipart upload %s part %d starting', self.key, part_number)
-        checksum = hashlib.sha1(part_data).digest()
-        upload_response = self.s3_client.upload_part(
-            Bucket=self.bucket_name,
-            Key=self.key,
-            UploadId=self.upload_id,
-            PartNumber=part_number,
-            Body=part_data,
-            ChecksumSHA1=b64encode(checksum).decode('ascii'))
-        logger.debug('Multipart upload %s part %d finished', self.key, part_number)
-        return upload_response['ETag'], checksum
+        try:
+            with self.waiting_upload_count_cond:
+                self.waiting_upload_count -= 1
+                self.waiting_upload_count_cond.notify_all()
+            self.create_fut.result()
+            assert self.upload_id
+            logger.debug('Multipart upload %s part %d starting', self.key, part_number)
+            checksum = hashlib.sha1(part_data).digest()
+            upload_response = self.s3_client.upload_part(
+                Bucket=self.bucket_name,
+                Key=self.key,
+                UploadId=self.upload_id,
+                PartNumber=part_number,
+                Body=part_data,
+                ChecksumSHA1=b64encode(checksum).decode('ascii'))
+            logger.debug('Multipart upload %s part %d finished', self.key, part_number)
+            return upload_response['ETag'], checksum
+        except Exception as e:
+            # early logging - otherwise the exception would be logged after other threads cleanup
+            logger.exception('Failed to upload part: %r', e)
+            raise e
 
     def _abort(self):
         with self.mutex:
