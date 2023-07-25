@@ -1,5 +1,4 @@
 from base64 import b64encode
-from functools import partial
 from itertools import count
 from subprocess import check_output
 import boto3
@@ -20,7 +19,7 @@ from secrets import token_bytes
 import shutil
 from sys import intern
 from tempfile import TemporaryDirectory
-from threading import Condition, Event, Lock, Semaphore, Thread
+from threading import Condition, Event, Lock
 from time import monotonic as monotime
 import zstandard
 
@@ -82,6 +81,7 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
                         'path': relative_path,
                         'st_uid': st.st_uid,
                         'st_gid': st.st_gid,
+                        'st_mode': oct(st.st_mode),
                         'owner': none_if_keyerror(path.owner),
                         'group': none_if_keyerror(path.group),
                     }})
@@ -99,7 +99,8 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
                         'group': none_if_keyerror(path.group),
                     }})
                 backup_file_contents(
-                    path, write_meta, data_collector, previous_backup_meta, block_cache, block_cache_mutex)
+                    path, write_meta, data_collector, previous_backup_meta,
+                    block_cache, block_cache_mutex)
 
                 st2 = path.stat()
                 if (st.st_mtime_ns, st.st_size) != (st2.st_mtime_ns, st2.st_size):
@@ -123,10 +124,6 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
             cache_meta_path.unlink()
         shutil.move(temp_meta_path, cache_meta_path)
         logger.debug('Metadata file stored in %s', cache_meta_path)
-
-        import subprocess
-        subprocess.check_call(['ls', '-lah', str(temp_dir)])
-        subprocess.check_call(['tree', '-ah', str(Path('~/.cache/baq').expanduser())])
 
 
 def encrypt_gpg(src_path, dst_path, recipients):
@@ -208,6 +205,9 @@ class BackupMetaReader:
 
 
 def backup_file_contents(path, write_meta, data_collector, previous_backup_meta, block_cache, block_cache_mutex):
+    '''
+    Backup one file.
+    '''
     assert isinstance(path, Path)
     aes_key = token_bytes(32)
     wfhash_queue = Queue(10)
@@ -340,7 +340,7 @@ def backup_file_contents(path, write_meta, data_collector, previous_backup_meta,
             logger.exception('store_thread failed: %r', e)
             raise e
 
-    with ThreadPoolExecutor(max_workers=worker_count + 3) as executor:
+    with ThreadPoolExecutor(worker_count + 3, 'backup_file') as executor:
         read_thread_fut = executor.submit(read_thread)
         whole_file_hash_fut = executor.submit(whole_file_hash_thread)
         store_fut = executor.submit(store_thread)
@@ -678,7 +678,12 @@ class S3Backend:
         assert isinstance(src_path, Path)
         assert self.storage_class
         key = self.key_prefix + filename
-        self.s3_client.upload_file(src_path, self.bucket_name, key, ExtraArgs={'ACL': 'private'})
+        self.s3_client.upload_file(
+            src_path, self.bucket_name, key,
+            ExtraArgs={
+                'ACL': 'private',
+                'StorageClass': 'STANDARD_IA',
+            })
         logger.info('Uploaded file s3://%s/%s (%.2f MB)', self.bucket_name, key, src_path.stat().st_size / 2**20)
 
     def download_file(self, filename, dst_path):

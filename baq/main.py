@@ -122,7 +122,6 @@ def do_restore(backup_url, local_path):
                     raise Exception('Checksum failed')
 
 
-
 def restore_from_data_file(remote, store_file_name, restore_blocks, local_path):
     assert isinstance(store_file_name, str)
     assert isinstance(local_path, Path)
