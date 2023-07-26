@@ -19,7 +19,7 @@ logger = getLogger(__name__)
 
 def baq_main():
     args = get_argument_parser().parse_args()
-    setup_logging()
+    setup_logging(verbose=args.verbose)
     try:
         if args.action == 'backup':
             if not args.recipient:
@@ -42,6 +42,7 @@ def baq_main():
 
 def get_argument_parser():
     parser = ArgumentParser()
+    parser.add_argument('--verbose', '-v', action='store_true')
     subparsers = parser.add_subparsers(required=True)
 
     backup_parser = subparsers.add_parser('backup')
@@ -62,11 +63,16 @@ def get_argument_parser():
 log_format = '%(asctime)s [%(process)d %(threadName)s] %(name)-10s %(levelname)5s: %(message)s'
 
 
-def setup_logging():
-    from logging import basicConfig, DEBUG, INFO
-    basicConfig(format=log_format, level=DEBUG)
+def setup_logging(verbose):
+    from logging import DEBUG, INFO, StreamHandler, Formatter
+    getLogger('').setLevel(DEBUG)
     getLogger('botocore').setLevel(INFO)
     getLogger('s3transfer').setLevel(INFO)
+    # log to stderr
+    h = StreamHandler()
+    h.setFormatter(Formatter(log_format))
+    h.setLevel(DEBUG if verbose else INFO)
+    getLogger('').addHandler(h)
 
 
 def do_restore(backup_url, local_path):
