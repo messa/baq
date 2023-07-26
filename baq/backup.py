@@ -507,7 +507,7 @@ class S3DataCollector:
             self.current_file.close()
             self.current_file = None
         self.stack.close()
-        assert all(f.closed_successfully == True for f in self.all_files)
+        assert all(f.closed_successfully is True for f in self.all_files)
 
 
 class S3DataCollectorFile:

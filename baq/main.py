@@ -154,7 +154,7 @@ def restore_from_data_file(remote, store_file_name, restore_blocks, local_path):
         except FileNotFoundError:
             pass
         if already_restored:
-             logger.debug(
+            logger.debug(
                 'File %s offset %d length %d is already restored',
                 original_path, block_meta.offset, block_meta.size)
         else:
