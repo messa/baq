@@ -25,12 +25,14 @@ def baq_main():
             if not args.recipient:
                 sys.exit('No encryption recipients were specified')
             do_backup(
-                Path(args.local_path).resolve(), args.backup_url,
+                Path(args.local_path).resolve(),
+                args.backup_url,
                 s3_storage_class=args.s3_storage_class,
                 encryption_recipients=args.recipient)
         elif args.action == 'restore':
             do_restore(
-                args.backup_url, Path(args.local_path).resolve())
+                args.backup_url,
+                Path(args.local_path).resolve())
         else:
             raise Exception('Invalid args.action')
     except BaseException as e:
@@ -71,6 +73,9 @@ def do_restore(backup_url, local_path):
     assert isinstance(backup_url, str)
     assert isinstance(local_path, Path)
     assert backup_url.startswith('s3://')
+    if not local_path.exists():
+        logger.info('Creating restore directory %s', local_path)
+        local_path.mkdir()
     assert local_path.is_dir()
     with ExitStack() as stack:
         temp_dir = Path(stack.enter_context(TemporaryDirectory(prefix='baq.')))
@@ -96,8 +101,14 @@ def do_restore(backup_url, local_path):
         pool = stack.enter_context(ThreadPoolExecutor(8, 'restore'))
         futures = []
         for data_file_name, data_file_contents in sorted(data_file_map.items()):
-            futures.append(pool.submit(restore_from_data_file, remote, data_file_name, data_file_contents, local_path))
-            #futures[-1].result()
+            futures.append(
+                pool.submit(
+                    restore_from_data_file,
+                    remote,
+                    data_file_name,
+                    data_file_contents,
+                    local_path))
+
         for fut in futures:
             fut.result()
 
@@ -109,17 +120,21 @@ def do_restore(backup_url, local_path):
             if file_meta.original_size == 0:
                 with full_path.open('wb'):
                     pass
-            with full_path.open('rb') as f:
-                h = hashlib.sha1()
-                while True:
-                    block = f.read(65536)
-                    if not block:
-                        break
-                    h.update(block)
-                if h.digest() == file_meta.original_sha1:
-                    logger.info('Checksum %s OK', file_path)
-                else:
-                    raise Exception('Checksum failed')
+            if sha1_file(full_path).digest() == file_meta.original_sha1:
+                logger.info('Checksum %s OK', file_path)
+            else:
+                raise Exception('Checksum failed')
+
+
+def sha1_file(file_path):
+    with file_path.open('rb') as f:
+        h = hashlib.sha1()
+        while True:
+            block = f.read(65536)
+            if not block:
+                break
+            h.update(block)
+        return h
 
 
 def restore_from_data_file(remote, store_file_name, restore_blocks, local_path):
