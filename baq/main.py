@@ -1,13 +1,17 @@
 from argparse import ArgumentParser
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 import hashlib
 from logging import getLogger
+import os
 from pathlib import Path
 import re
+from reprlib import repr as smart_repr
 from subprocess import check_output
 import sys
 from tempfile import TemporaryDirectory
+from time import monotonic as monotime
 
 import zstandard
 
@@ -20,6 +24,7 @@ logger = getLogger(__name__)
 def baq_main():
     args = get_argument_parser().parse_args()
     setup_logging(verbose=args.verbose)
+    setup_log_file(os.environ.get('BAQ_LOG_FILE'))
     try:
         if args.action == 'backup':
             if not args.recipient:
@@ -75,6 +80,17 @@ def setup_logging(verbose):
     getLogger('').addHandler(h)
 
 
+def setup_log_file(log_file):
+    from logging import DEBUG, Formatter
+    from logging.handlers import WatchedFileHandler
+    if not log_file:
+        return
+    h = WatchedFileHandler(log_file)
+    h.setFormatter(Formatter(log_format))
+    h.setLevel(DEBUG)
+    getLogger('').addHandler(h)
+
+
 def do_restore(backup_url, local_path):
     assert isinstance(backup_url, str)
     assert isinstance(local_path, Path)
@@ -102,22 +118,34 @@ def do_restore(backup_url, local_path):
             for b in file_meta.blocks:
                 data_file_map.setdefault(b.store_file, []).append((file_path, b))
 
+        logger.debug(
+            'Will be restoring from files:%s',
+            ''.join(f'\n  - {k} ({len(v)} blocks)' for k, v in sorted(data_file_map.items())))
+
         # TODO: restore from glacier all files in data_file_map.keys()
 
-        pool = stack.enter_context(ThreadPoolExecutor(8, 'restore'))
-        futures = []
+        restore_pool = stack.enter_context(ThreadPoolExecutor(8, 'restore'))
+        write_pool = stack.enter_context(ThreadPoolExecutor(8, 'write'))
+        restore_futures = deque()
         for data_file_name, data_file_contents in sorted(data_file_map.items()):
-            futures.append(
-                pool.submit(
+            restore_futures.append(
+                restore_pool.submit(
                     restore_from_data_file,
+                    write_pool,
                     remote,
                     data_file_name,
                     data_file_contents,
                     local_path))
+            while len(restore_futures) > 8:
+                restore_futures.popleft().result()
 
-        for fut in futures:
+        for fut in restore_futures:
             fut.result()
 
+        del restore_pool
+        del write_pool
+
+    with ExitStack() as stack:
         for dir_path, dir_meta in meta.directories.items():
             full_path = local_path / dir_path
             full_path.mkdir(exist_ok=True)
@@ -143,43 +171,85 @@ def sha1_file(file_path):
         return h
 
 
-def restore_from_data_file(remote, store_file_name, restore_blocks, local_path):
+def restore_from_data_file(write_pool, remote, store_file_name, restore_blocks, local_path):
     assert isinstance(store_file_name, str)
     assert isinstance(local_path, Path)
-    filtered_restore_blocks = []
-    for original_path, block_meta in restore_blocks:
-        already_restored = False
-        original_full_path = local_path / original_path
-        try:
-            with original_full_path.open('rb') as f:
-                f.seek(block_meta.offset)
-                file_data = f.read(block_meta.size)
-                if file_data and hashlib.sha3_512(file_data).digest() == block_meta.sha3:
-                    already_restored = True
-                del file_data
-        except FileNotFoundError:
-            pass
-        if already_restored:
-            logger.debug(
-                'File %s offset %d length %d is already restored',
-                original_path, block_meta.offset, block_meta.size)
+    try:
+        logger.debug(
+            'restore_from_data_file store_file_name=%s restore_blocks=%s local_path=%s',
+            store_file_name, smart_repr(restore_blocks), local_path)
+        filtered_restore_blocks = []
+        for original_path, block_meta in restore_blocks:
+            already_restored = False
+            data_changed = False
+            original_full_path = local_path / original_path
+            try:
+                with original_full_path.open('rb') as f:
+                    f.seek(block_meta.offset)
+                    file_data = f.read(block_meta.size)
+                    if file_data:
+                        if hashlib.sha3_512(file_data).digest() == block_meta.sha3:
+                            already_restored = True
+                        else:
+                            data_changed = file_data.rstrip(b'\x00') != b''
+                    del file_data
+            except FileNotFoundError:
+                pass
+            if already_restored:
+                logger.debug(
+                    'File %s offset %d length %d is already restored',
+                    original_path, block_meta.offset, block_meta.size)
+            else:
+                logger.debug(
+                    'File %s offset %d length %d needs to be restored%s',
+                    original_path, block_meta.offset, block_meta.size,
+                    ' (data changed)' if data_changed else '')
+                filtered_restore_blocks.append((original_path, block_meta))
+        restore_blocks = filtered_restore_blocks
+        del filtered_restore_blocks
+        retrieve_ranges = [
+            (block_meta.store_offset, block_meta.store_size)
+            for _, block_meta in restore_blocks
+        ]
+        if not retrieve_ranges:
+            logger.debug('Nothing to restore from %s', store_file_name)
         else:
-            filtered_restore_blocks.append((original_path, block_meta))
-    restore_blocks = filtered_restore_blocks
-    del filtered_restore_blocks
-    retrieve_ranges = [
-        (block_meta.store_offset, block_meta.store_size)
-        for _, block_meta in restore_blocks
-    ]
-    retrieved_range_data = remote.retrieve_file_ranges(store_file_name, retrieve_ranges)
-    for n, ((original_path, block_meta), encrypted_data) in enumerate(zip(restore_blocks, retrieved_range_data), start=1):
-        assert isinstance(original_path, str)
-        assert isinstance(block_meta, BackupMetaReader.FileBlock)
-        assert block_meta.store_file == store_file_name
-        assert isinstance(encrypted_data, bytes)
+            logger.debug('calling retrieve_file_ranges(%s, %s)', store_file_name, smart_repr(retrieve_ranges))
+            retrieved_range_data = remote.retrieve_file_ranges(store_file_name, retrieve_ranges)
+            logger.debug('retrieve_file_ranges -> %s', retrieved_range_data)
+            write_futures = deque()
+            for n, ((original_path, block_meta), encrypted_data) in enumerate(zip(restore_blocks, retrieved_range_data), start=1):
+                assert isinstance(original_path, str)
+                assert isinstance(block_meta, BackupMetaReader.FileBlock)
+                assert block_meta.store_file == store_file_name
+                assert isinstance(encrypted_data, bytes)
+                write_futures.append(
+                    write_pool.submit(
+                        write_restore_block,
+                        original_path, block_meta, store_file_name, encrypted_data, local_path,
+                        n, len(restore_blocks)))
+                t1 = monotime()
+                while len(write_futures) > 100:
+                    write_futures.popleft().result()
+                t2 = monotime()
+                if t2 - t1 > 0.001:
+                    logger.debug('Waited %f seconds for write pool', t2 - t1)
+
+            for f in write_futures:
+                f.result()
+
+        logger.debug('restore_from_data_file done')
+    except BaseException as e:
+        logger.exception('restore_from_data_file failed: %r', e)
+        raise
+
+
+def write_restore_block(original_path, block_meta, store_file_name, encrypted_data, local_path, restore_block_number, restore_block_count):
+    try:
         logger.debug(
             'Restoring file %s offset %d length %d from %s (%d/%d)',
-            original_path, block_meta.offset, block_meta.size, store_file_name, n, len(restore_blocks))
+            original_path, block_meta.offset, block_meta.size, store_file_name,
+            restore_block_number, restore_block_count)
         compressed_data = decrypt_aes(encrypted_data, block_meta.aes_key)
         original_data = zstandard.decompress(compressed_data)
         assert hashlib.sha3_512(original_data).digest() == block_meta.sha3
@@ -191,14 +261,17 @@ def restore_from_data_file(remote, store_file_name, restore_blocks, local_path):
             try:
                 f = stack.enter_context(original_full_path.open('r+b'))
             except FileNotFoundError:
-                f = stack.enter_context(original_full_path.open('w+b'))
+                try:
+                    f = stack.enter_context(original_full_path.open('xb'))
+                except FileExistsError:
+                    f = stack.enter_context(original_full_path.open('r+b'))
             f.seek(block_meta.offset)
-            if f.read(len(original_data)) == original_data:
-                logger.debug('Already restored')
-            else:
-                f.seek(block_meta.offset)
-                assert f.tell() == block_meta.offset
-                f.write(original_data)
+            f.write(original_data)
+            f.flush()
+        logger.debug('write_restore_block done')
+    except BaseException as e:
+        logger.exception('write_restore_block failed: %r', e)
+        raise e
 
 
 def decrypt_gpg(src_path, dst_path):

@@ -13,13 +13,14 @@ import json
 from logging import getLogger
 from os import cpu_count
 from pathlib import Path
+from reprlib import repr as smart_repr
 from queue import Queue
 import re
 from secrets import token_bytes
 import shutil
 from sys import intern
 from tempfile import TemporaryDirectory
-from threading import Condition, Event, Lock
+from threading import Condition, Event, Lock, local as threading_local
 from time import monotonic as monotime
 import zstandard
 
@@ -682,13 +683,22 @@ class S3Backend:
         self.bucket_name, self.key_prefix = m.groups()
         self.key_prefix = self.key_prefix.strip('/')
         self.key_prefix = self.key_prefix + '/' if self.key_prefix else ''
-        self.s3_client = boto3.client('s3')
+        self._thread_local = threading_local()
+
+    def _get_s3_client(self):
+        try:
+            return self._thread_local.s3_client
+        except AttributeError:
+            logger.debug('Creating thread-local boto3 client')
+            self._thread_local.s3_client = boto3.client('s3')
+            return self._thread_local.s3_client
 
     def upload_file(self, src_path, filename):
         assert isinstance(src_path, Path)
         assert self.storage_class
         key = self.key_prefix + filename
-        self.s3_client.upload_file(
+        s3_client = self._get_s3_client()
+        s3_client.upload_file(
             src_path, self.bucket_name, key,
             ExtraArgs={
                 'ACL': 'private',
@@ -700,7 +710,8 @@ class S3Backend:
         assert isinstance(dst_path, Path)
         assert not dst_path.exists()
         key = self.key_prefix + filename
-        self.s3_client.download_file(self.bucket_name, key, dst_path)
+        s3_client = self._get_s3_client()
+        s3_client.download_file(self.bucket_name, key, dst_path)
         logger.info('Downloaded file s3://%s/%s (%.2f MB)', self.bucket_name, key, dst_path.stat().st_size / 2**20)
 
     def retrieve_file_range(self, filename, offset, size):
@@ -708,7 +719,8 @@ class S3Backend:
         assert isinstance(offset, int)
         assert isinstance(size, int)
         key = self.key_prefix + filename
-        res = self.s3_client.get_object(
+        s3_client = self._get_s3_client()
+        res = s3_client.get_object(
             Bucket=self.bucket_name,
             Key=key,
             Range=f'bytes={offset}-{offset+size-1}')
@@ -718,8 +730,11 @@ class S3Backend:
         return content
 
     def retrieve_file_ranges(self, filename, offset_size_list):
+        logger.debug('retrieve_file_ranges %s %s', filename, smart_repr(offset_size_list))
         assert isinstance(filename, str)
+        s3_client = self._get_s3_client()
         offset_size_list = deque(offset_size_list)
+        assert len(offset_size_list) > 0
         for offset, size in offset_size_list:
             assert isinstance(offset, int)
             assert isinstance(size, int)
@@ -729,13 +744,18 @@ class S3Backend:
                 if consecutive_range_end != offset_size_list[i][0]:
                     break
                 consecutive_range_end += offset_size_list[i][1]
-            res = self.s3_client.get_object(
+            logger.debug(
+                'get_object %s bytes %d - %d size %d',
+                filename, offset_size_list[0][0], consecutive_range_end-1,
+                consecutive_range_end-1 - offset_size_list[0][0])
+            res = s3_client.get_object(
                 Bucket=self.bucket_name,
                 Key=self.key_prefix + filename,
                 Range=f'bytes={offset_size_list[0][0]}-{consecutive_range_end-1}')
             while True:
                 offset, size = offset_size_list.popleft()
                 assert offset + size <= consecutive_range_end
+                logger.debug('Reading offset %d size %d', offset, size)
                 data = res['Body'].read(size)
                 assert len(data) == size
                 yield data
