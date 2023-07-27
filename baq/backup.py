@@ -740,14 +740,17 @@ class S3Backend:
             assert isinstance(size, int)
         while offset_size_list:
             consecutive_range_end = offset_size_list[0][0] + offset_size_list[0][1]
+            item_count = 1
             for i in range(1, len(offset_size_list)):
                 if consecutive_range_end != offset_size_list[i][0]:
                     break
                 consecutive_range_end += offset_size_list[i][1]
+                item_count += 1
             logger.debug(
-                'get_object %s bytes %d - %d size %d',
+                'get_object %s bytes %d - %d size %d for %d items',
                 filename, offset_size_list[0][0], consecutive_range_end-1,
-                consecutive_range_end-1 - offset_size_list[0][0])
+                consecutive_range_end-1 - offset_size_list[0][0],
+                item_count)
             res = s3_client.get_object(
                 Bucket=self.bucket_name,
                 Key=self.key_prefix + filename,
