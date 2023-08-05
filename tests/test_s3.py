@@ -1,17 +1,14 @@
 from base64 import b64encode
 import boto3
-from datetime import datetime
 import hashlib
-from pytest import skip
 
 
-s3_bucket_name = 'xxx'
-s3_prefix = 'messa-dev-baq/tests1/'
+def test_s3_multipart_upload(e2e_s3_config):
+    s3_bucket_name = e2e_s3_config.bucket_name
+    s3_key = e2e_s3_config.path_prefix + 'testfile'
+    print(f'{s3_bucket_name=}')
+    print(f'{s3_key=}')
 
-
-def test_s3_multipart_upload():
-    skip('works with real S3 API')
-    s3_key = s3_prefix + datetime.utcnow().strftime('%y%m%dT%H%M%SZ')
     client = boto3.client('s3')
     create_response = client.create_multipart_upload(
         ACL='private',
@@ -62,5 +59,3 @@ def test_s3_multipart_upload():
             Key=s3_key,
             UploadId=upload_id)
         print(f'{abort_response=}')
-
-    #assert 0
