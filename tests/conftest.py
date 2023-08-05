@@ -65,7 +65,8 @@ def e2e_s3_config_factory(test_session_id):
         bucket_name=bucket_name,
         path_prefix=path_prefix + test_name + '/')
 
-    delete_s3_folder(bucket_name, path_prefix)
+    if os.environ.get('CI'):
+        delete_s3_folder(bucket_name, path_prefix)
 
 
 def delete_s3_folder(bucket_name, path):

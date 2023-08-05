@@ -2,7 +2,7 @@ venv_dir=venv
 python=python3
 
 check: $(venv_dir)/packages-installed
-	$(venv_dir)/bin/pytest -v tests
+	$(venv_dir)/bin/pytest -v --tb=native $(pytest_args) tests
 	make lint
 
 lint: $(venv_dir)/packages-installed
