@@ -159,6 +159,8 @@ def do_restore(backup_url, local_path):
         for dir_path, dir_meta in meta.directories.items():
             full_path = local_path / dir_path
             full_path.mkdir(exist_ok=True)
+            # TODO: restore directory permissions and mtime
+
         for file_path, file_meta in meta.files.items():
             full_path = local_path / file_path
             if file_meta.original_size == 0:
@@ -168,6 +170,7 @@ def do_restore(backup_url, local_path):
                 logger.info('Checksum %s OK', file_path)
             else:
                 raise Exception('Checksum failed')
+            # TODO: restore file permissions and mtime
 
 
 def split(items, n):

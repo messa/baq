@@ -11,6 +11,7 @@ import hashlib
 from io import BytesIO
 import json
 from logging import getLogger
+import os
 from os import cpu_count
 from pathlib import Path
 from reprlib import repr as smart_repr
@@ -27,7 +28,7 @@ import zstandard
 
 logger = getLogger(__name__)
 
-block_size = 2**20
+default_block_size = int(os.environ.get('BAQ_BLOCK_SIZE') or 128 * 1024)
 worker_count = cpu_count()
 
 
@@ -47,6 +48,7 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
         cache_meta_path = cache_dir / 'last-meta'
 
         previous_backup_meta = BackupMetaReader(cache_meta_path) if cache_meta_path.is_file() else None
+        block_size = previous_backup_meta.block_size if previous_backup_meta else default_block_size
 
         backup_id = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
         temp_meta_path = temp_dir / 'meta.wip'
@@ -67,6 +69,7 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
         write_meta({
             'baq_backup': {
                 'format_version': 1,
+                'block_size': block_size,
             }
         })
 
@@ -101,7 +104,7 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
                     }})
                 backup_file_contents(
                     path, write_meta, data_collector, previous_backup_meta,
-                    block_cache, block_cache_mutex)
+                    block_cache, block_cache_mutex, block_size)
 
                 st2 = path.stat()
                 if (st.st_mtime_ns, st.st_size) != (st2.st_mtime_ns, st2.st_size):
@@ -153,9 +156,12 @@ class BackupMetaReader:
         self.blocks = {} # sha3 -> FileBlock
         start_time = monotime()
         with gzip.open(meta_path, 'rb') as f:
+            logger.info('Reading previous backup metadata from %s', meta_path)
             records = (json.loads(line) for line in f)
             header = next(records)
             assert header['baq_backup']['format_version'] == 1
+            self.block_size = header['baq_backup'].get('block_size', default_block_size)
+            assert isinstance(self.block_size, int)
             while True:
                 try:
                     record = next(records)
@@ -205,7 +211,7 @@ class BackupMetaReader:
         return self.blocks.get(sha3_digest)
 
 
-def backup_file_contents(path, write_meta, data_collector, previous_backup_meta, block_cache, block_cache_mutex):
+def backup_file_contents(path, write_meta, data_collector, previous_backup_meta, block_cache, block_cache_mutex, block_size):
     '''
     Backup one file.
     '''
