@@ -1,8 +1,8 @@
 [project]
 name = "baq"
-version = "1.0.2"
+version = "1.0.3"
 authors = [
-  {name = "Petr Messner", email = "petr.messner@gmail.com" }
+  {name = "Petr Messner", email = "petr.messner@gmail.com"}
 ]
 description = "Backup tool"
 license = {file = "LICENSE"}
