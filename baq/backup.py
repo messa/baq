@@ -83,6 +83,9 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
                 write_meta({
                     'directory': {
                         'path': relative_path,
+                        'st_mtime_ns': str(st.st_mtime_ns),
+                        'st_atime_ns': str(st.st_atime_ns),
+                        'st_ctime_ns': str(st.st_ctime_ns),
                         'st_uid': st.st_uid,
                         'st_gid': st.st_gid,
                         'st_mode': oct(st.st_mode),
@@ -95,6 +98,7 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
                     'file': {
                         'path': relative_path,
                         'st_mtime_ns': str(st.st_mtime_ns),
+                        'st_atime_ns': str(st.st_atime_ns),
                         'st_ctime_ns': str(st.st_ctime_ns),
                         'st_uid': st.st_uid,
                         'st_gid': st.st_gid,
@@ -145,8 +149,8 @@ def encrypt_gpg(src_path, dst_path, recipients):
 
 class BackupMetaReader:
 
-    DirectoryMeta = namedtuple('DirectoryMeta', 'st_uid st_gid owner group')
-    FileMeta = namedtuple('FileMeta', 'blocks st_mtime_ns st_ctime_ns st_uid st_gid st_mode owner group original_size original_sha1')
+    DirectoryMeta = namedtuple('DirectoryMeta', 'st_mtime_ns st_atime_ns st_mode st_uid st_gid owner group')
+    FileMeta = namedtuple('FileMeta', 'blocks st_mtime_ns st_atime_ns st_mode st_uid st_gid owner group original_size original_sha1')
     FileBlock = namedtuple('FileBlock', 'offset size sha3 aes_key store_file store_offset store_size')
 
     def __init__(self, meta_path):
@@ -169,7 +173,8 @@ class BackupMetaReader:
                     break
                 if d := record.get('directory'):
                     self.directories[d['path']] = self.DirectoryMeta(
-                        d['st_uid'], d['st_gid'], intern(d['owner']), intern(d['group']),
+                        int(f['st_mtime_ns']), int(f['st_atime_ns']), int(d['st_mode'], 8), d['st_uid'], d['st_gid'],
+                        intern(d['owner']), intern(d['group']),
                     )
                     del d
                 elif f := record.get('file'):
@@ -195,8 +200,8 @@ class BackupMetaReader:
                             raise Exception(f'Unknown file record: {file_record!r}')
                     self.files[f['path']] = self.FileMeta(
                         file_blocks,
-                        int(f['st_mtime_ns']), int(f['st_ctime_ns']),
-                        f['st_uid'], f['st_gid'], f['st_mode'], f['owner'], f['group'],
+                        int(f['st_mtime_ns']), int(f['st_atime_ns']), int(f['st_mode'], 8), f['st_uid'], f['st_gid'],
+                        intern(f['owner']), intern(f['group']),
                         int(original_size), original_sha1,
                     )
                     del f

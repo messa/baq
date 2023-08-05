@@ -156,21 +156,41 @@ def do_restore(backup_url, local_path):
         del write_pool
 
     with ExitStack() as stack:
-        for dir_path, dir_meta in meta.directories.items():
+        for dir_path, _ in meta.directories.items():
             full_path = local_path / dir_path
             full_path.mkdir(exist_ok=True)
-            # TODO: restore directory permissions and mtime
 
         for file_path, file_meta in meta.files.items():
             full_path = local_path / file_path
             if file_meta.original_size == 0:
                 with full_path.open('wb'):
                     pass
+            assert full_path.stat().st_size == file_meta.original_size
             if sha1_file(full_path).digest() == file_meta.original_sha1:
                 logger.info('Checksum %s OK', file_path)
             else:
                 raise Exception('Checksum failed')
-            # TODO: restore file permissions and mtime
+            try:
+                os.chown(full_path, file_meta.st_uid, file_meta.st_gid)
+            except Exception as e:
+                # This may happen if not running under root
+                logger.warning(
+                    'Failed to chown file %s to uid %r gid %r: %r',
+                    full_path, file_meta.st_uid, file_meta.st_gid, e)
+            full_path.chmod(file_meta.st_mode & 0o777)
+            os.utime(full_path, ns=(file_meta.st_atime_ns, file_meta.st_mtime_ns))
+
+        for dir_path, dir_meta in sorted(meta.directories.items(), reverse=True):
+            full_path = local_path / dir_path
+            try:
+                os.chown(full_path, dir_meta.st_uid, dir_meta.st_gid)
+            except Exception as e:
+                # This may happen if not running under root
+                logger.warning(
+                    'Failed to chown directory %s to uid %r gid %r: %r',
+                    full_path, dir_meta.st_uid, dir_meta.st_gid, e)
+            full_path.chmod(dir_meta.st_mode & 0o777)
+            os.utime(full_path, ns=(dir_meta.st_atime_ns, dir_meta.st_mtime_ns))
 
 
 def split(items, n):
