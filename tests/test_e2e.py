@@ -37,6 +37,7 @@ def test_backup_and_restore(e2e_s3_config, tmp_path):
     (src_dir / 'file1.txt').chmod(0o644)
     (src_dir / 'file2.txt').write_text('This is file2.txt\n' * 10000)
     (src_dir / 'file2.txt').chmod(0o600)
+    (src_dir / 'file3.txt').write_text('This is file3.txt\nLorem ipsum dolor sit amet\n')
 
     # Backup
     backup_cmd = [
@@ -72,6 +73,7 @@ def test_backup_and_restore(e2e_s3_config, tmp_path):
 
     assert (restore_dir / 'file1.txt').read_text() == 'This is file1.txt\n'
     assert (restore_dir / 'file2.txt').read_text() == 'This is file2.txt\n' * 10000
+    assert (restore_dir / 'file3.txt').read_text() == 'This is file3.txt\nLorem ipsum dolor sit amet\n'
     assert (restore_dir / 'file1.txt').stat().st_mode & 0o777 == 0o644
     assert (restore_dir / 'file2.txt').stat().st_mode & 0o777 == 0o600
     assert (restore_dir / 'file1.txt').stat().st_mtime_ns == (src_dir / 'file1.txt').stat().st_mtime_ns
@@ -79,6 +81,7 @@ def test_backup_and_restore(e2e_s3_config, tmp_path):
 
     # Change some file
     (src_dir / 'file1.txt').write_text('This is file1.txt updated\n')
+    (src_dir / 'file3.txt').write_text('This is file3.txt\nText removed\n')
 
     # Backup (second iteration)
     run_command(backup_cmd)
@@ -97,6 +100,7 @@ def test_backup_and_restore(e2e_s3_config, tmp_path):
 
     assert (restore_dir / 'file1.txt').read_text() == 'This is file1.txt updated\n'
     assert (restore_dir / 'file2.txt').read_text() == 'This is file2.txt\n' * 10000
+    assert (restore_dir / 'file3.txt').read_text() == 'This is file3.txt\nText removed\n'
     assert (restore_dir / 'file1.txt').stat().st_mode & 0o777 == 0o644
     assert (restore_dir / 'file2.txt').stat().st_mode & 0o777 == 0o600
     assert (restore_dir / 'file1.txt').stat().st_mtime_ns == (src_dir / 'file1.txt').stat().st_mtime_ns

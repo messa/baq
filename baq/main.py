@@ -167,6 +167,8 @@ def do_restore(backup_url, local_path):
             if file_meta.original_size == 0:
                 with full_path.open('wb'):
                     pass
+            if full_path.stat().st_size > file_meta.original_size:
+                os.truncate(full_path, file_meta.original_size)
             assert full_path.stat().st_size == file_meta.original_size
             if sha1_file(full_path).digest() == file_meta.original_sha1:
                 logger.info('Checksum %s OK', file_path)
