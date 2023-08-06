@@ -11,13 +11,15 @@ from reprlib import repr as smart_repr
 from subprocess import check_output
 import sys
 from tempfile import TemporaryDirectory
-from threading import Semaphore
+from threading import Lock, Semaphore
 import zstandard
 
 from .backup import do_backup, S3Backend, BackupMetaReader, decrypt_aes
 
 
 logger = getLogger(__name__)
+
+directory_mutex = Lock()
 
 
 def baq_main():
@@ -303,9 +305,10 @@ def write_restore_block(original_path, block_meta, store_file_name, encrypted_da
         original_data = zstandard.decompress(compressed_data)
         assert hashlib.sha3_512(original_data).digest() == block_meta.sha3
         original_full_path = local_path / original_path
-        if not original_full_path.parent.exists():
-            logger.debug('Creating directory %s', original_full_path.parent)
-            original_full_path.parent.mkdir(parents=True)
+        with directory_mutex:
+            if not original_full_path.parent.exists():
+                logger.debug('Creating directory %s', original_full_path.parent)
+                original_full_path.parent.mkdir(parents=True)
         with ExitStack() as stack:
             try:
                 f = stack.enter_context(original_full_path.open('r+b'))

@@ -173,7 +173,7 @@ class BackupMetaReader:
                     break
                 if d := record.get('directory'):
                     self.directories[d['path']] = self.DirectoryMeta(
-                        int(f['st_mtime_ns']), int(f['st_atime_ns']), int(d['st_mode'], 8), d['st_uid'], d['st_gid'],
+                        int(d['st_mtime_ns']), int(d['st_atime_ns']), int(d['st_mode'], 8), d['st_uid'], d['st_gid'],
                         intern(d['owner']), intern(d['group']),
                     )
                     del d
