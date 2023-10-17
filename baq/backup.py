@@ -46,7 +46,7 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
         remote = S3Backend(backup_url, s3_storage_class)
         assert local_path.is_dir()
 
-        cache_name = hashlib.sha1(f'{local_path.resolve()} {backup_url}'.encode()).hexdigest()
+        cache_name = hashlib.sha1(backup_url.encode()).hexdigest()
         cache_meta_path = cache_dir / cache_name / 'last-meta'
 
         previous_backup_meta = BackupMetaReader(cache_meta_path) if cache_meta_path.is_file() else None
