@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from logging import getLogger
 from pytest import fixture, skip
 import os
@@ -13,7 +13,7 @@ logger = getLogger(__name__)
 
 @fixture(scope='session')
 def test_session_id():
-    now = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+    now = datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')
     if os.environ.get('GITHUB_ACTIONS'):
         print('GITHUB_ACTION:', os.environ.get('GITHUB_ACTION'))
         print('GITHUB_ACTOR:', os.environ.get('GITHUB_ACTOR'))

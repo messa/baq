@@ -5,7 +5,7 @@ import boto3
 from collections import deque, namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
-from datetime import datetime
+from datetime import UTC, datetime
 import gzip
 import hashlib
 from io import BytesIO
@@ -50,7 +50,7 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
         previous_backup_meta = BackupMetaReader(cache_meta_path) if cache_meta_path.is_file() else None
         block_size = previous_backup_meta.block_size if previous_backup_meta else default_block_size
 
-        backup_id = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+        backup_id = datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')
         temp_meta_path = temp_dir / 'meta.wip'
         meta_file = stack.enter_context(gzip.open(temp_meta_path, 'wb'))
         #data_collector = stack.enter_context(DataCollector(backup_id, temp_dir, remote))
