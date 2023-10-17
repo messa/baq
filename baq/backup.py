@@ -30,6 +30,7 @@ from .util import UTC
 
 logger = getLogger(__name__)
 
+cache_dir = Path(os.environ.get('BAQ_CACHE_DIR') or Path('~/.cache/baq').expanduser())
 default_block_size = int(os.environ.get('BAQ_BLOCK_SIZE') or 128 * 1024)
 worker_count = cpu_count()
 
@@ -46,8 +47,7 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
         assert local_path.is_dir()
 
         cache_name = hashlib.sha1(f'{local_path.resolve()} {backup_url}'.encode()).hexdigest()
-        cache_dir = Path('~/.cache/baq').expanduser() / cache_name
-        cache_meta_path = cache_dir / 'last-meta'
+        cache_meta_path = cache_dir / cache_name / 'last-meta'
 
         previous_backup_meta = BackupMetaReader(cache_meta_path) if cache_meta_path.is_file() else None
         block_size = previous_backup_meta.block_size if previous_backup_meta else default_block_size
