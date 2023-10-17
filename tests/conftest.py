@@ -1,11 +1,13 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from logging import getLogger
 from pytest import fixture, skip
 import os
 import re
 from socket import getfqdn
 from uuid import uuid4
+
+from baq.util import UTC
 
 
 logger = getLogger(__name__)

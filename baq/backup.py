@@ -5,7 +5,7 @@ import boto3
 from collections import deque, namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
-from datetime import UTC, datetime
+from datetime import datetime
 import gzip
 import hashlib
 from io import BytesIO
@@ -24,6 +24,8 @@ from tempfile import TemporaryDirectory
 from threading import Condition, Event, Lock, local as threading_local
 from time import monotonic as monotime
 import zstandard
+
+from .util import UTC
 
 
 logger = getLogger(__name__)
