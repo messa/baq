@@ -74,6 +74,14 @@ No encryption, no compression (unless you have encrypted and/or compressed files
 Not friendly with cloud storage like AWS S3.
 
 
+### [Kopia](https://kopia.io/)
+
+I did not explore Kopia thoroughly as I stumbled upon it only recently.
+Kopia does incremental backup based on rolling hash, therefore I'm worried about the same performance issues as with Duplicity.
+Although it looks like you can configure a repository to use different rolling hash algorithms or to use a "fixed splitter" that does not use rolling hash.
+I think Kopia looks promising and perhaps could be the generally preffered choice for a backup tool.
+
+
 ### Git
 
 Git is a version control tool, not a backup tool – but can be used as one.
