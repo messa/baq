@@ -56,9 +56,7 @@ But I wanted to do a few things differently:
 - as simple as possible
 
 
-### Duplicity
-
-[duplicity.nongnu.org](http://duplicity.nongnu.org/)
+### [Duplicity](http://duplicity.nongnu.org/)
 
 I had used Duplicity previously.
 I liked the incremental backups (duplicity uses librsync with rolling hash algorithm), encryption (based on GPG) and multiple backends (including AWS S3).
@@ -66,7 +64,7 @@ Unfortunately I have experienced performance issues when backing up multi-gigaby
 I've decided to use `age` instead of GPG as encryption tool for `baq`.
 
 
-### rdiff-backup
+### [rdiff-backup](https://rdiff-backup.net/)
 
 Another backup tool using librsync.
 Basically it copies all data to remote system as they are + keeps reverse diffs to be able to retrieve older versions of those files.
@@ -79,7 +77,7 @@ Not friendly with cloud storage like AWS S3.
 I did not explore Kopia thoroughly as I stumbled upon it only recently.
 Kopia does incremental backup based on rolling hash, therefore I'm worried about the same performance issues as with Duplicity.
 Although it looks like you can configure a repository to use different rolling hash algorithms or to use a "fixed splitter" that does not use rolling hash.
-I think Kopia looks promising and perhaps could be the generally preffered choice for a backup tool.
+I think Kopia looks promising and perhaps could be the preffered choice for a general backup tool.
 
 
 ### Git
