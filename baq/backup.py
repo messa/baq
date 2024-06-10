@@ -60,13 +60,15 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
 
         block_cache = {}
         block_cache_mutex = Lock()
+        meta_file_mutex = Lock()
 
         def write_meta(obj):
             assert isinstance(obj, dict)
             obj_json = json.dumps(obj)
-            if 'aes_key' not in obj_json:
-                logger.debug('write_meta: %s', obj_json)
-            meta_file.write(obj_json.encode('utf-8') + b'\n')
+            with meta_file_mutex:
+                if 'aes_key' not in obj_json:
+                    logger.debug('write_meta: %s', obj_json)
+                meta_file.write(obj_json.encode('utf-8') + b'\n')
 
         write_meta({
             'baq_backup': {
