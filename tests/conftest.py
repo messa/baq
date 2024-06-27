@@ -1,5 +1,6 @@
 from datetime import datetime
-from logging import getLogger
+from logging import getLogger, INFO
+from warnings import filterwarnings
 from pytest import fixture
 import os
 from socket import getfqdn
@@ -9,6 +10,21 @@ from baq.util import UTC
 
 
 logger = getLogger(__name__)
+
+
+getLogger('botocore').setLevel(INFO)
+
+
+@fixture(autouse=True)
+def ignore_deprecation_warnings():
+    '''
+    Ignore DeprecationWarning in tests.
+    '''
+    filterwarnings(
+        'ignore',
+        category=DeprecationWarning,
+        message=r'datetime.datetime.utcnow\(\) is deprecated',
+        module=r'botocore\.(auth|endpoint)')
 
 
 @fixture(scope='session')
