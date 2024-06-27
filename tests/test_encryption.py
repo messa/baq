@@ -1,4 +1,4 @@
-from baq.backup import decrypt_aes, encrypt_aes
+from baq.helpers.encryption import decrypt_aes, encrypt_aes
 
 
 def test_encrypt_decrypt_aes():

@@ -7,12 +7,14 @@ import os
 from pathlib import Path
 import re
 from reprlib import repr as smart_repr
-from subprocess import check_output
 from tempfile import TemporaryDirectory
 from threading import Lock, Semaphore
 import zstandard
 
-from .backup import S3Backend, BackupMetaReader, decrypt_aes
+from .backends.s3_backend import S3Backend
+from .helpers.encryption import decrypt_aes, decrypt_gpg
+from .helpers.metadata_file import BackupMetaReader
+from .util import sha1_file, split
 
 
 logger = getLogger(__name__)
@@ -232,35 +234,3 @@ def write_restore_block(original_path, block_meta, store_file_name, encrypted_da
     except BaseException as e:
         logger.exception('write_restore_block failed: %r', e)
         raise e
-
-
-def decrypt_gpg(src_path, dst_path):
-    assert src_path.is_file()
-    assert not dst_path.exists()
-    gpg_cmd = ['gpg2', '--decrypt', '-o', str(dst_path), str(src_path)]
-    logger.debug('Running %s', ' '.join(gpg_cmd))
-    check_output(gpg_cmd)
-    assert dst_path.is_file()
-    assert dst_path.stat().st_size
-
-
-def sha1_file(file_path):
-    with file_path.open('rb') as f:
-        h = hashlib.sha1()
-        while True:
-            block = f.read(65536)
-            if not block:
-                break
-            h.update(block)
-        return h
-
-
-def split(items, n):
-    chunk = []
-    for item in items:
-        chunk.append(item)
-        if len(chunk) >= n:
-            yield chunk
-            chunk = []
-    if chunk:
-        yield chunk
