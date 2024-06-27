@@ -28,8 +28,10 @@ def decrypt_gpg(src_path, dst_path):
     gpg_cmd = ['gpg2', '--decrypt', '-o', str(dst_path), str(src_path)]
     logger.debug('Running %s', ' '.join(gpg_cmd))
     check_output(gpg_cmd)
-    assert dst_path.is_file()
-    assert dst_path.stat().st_size
+    if not dst_path.is_file():
+        raise Exception('Decryption failed: output file not found')
+    if not dst_path.stat().st_size:
+        raise Exception('Decryption failed: output file is empty')
 
 
 def encrypt_aes(data, key):

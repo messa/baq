@@ -16,9 +16,9 @@ from threading import Lock
 import zstandard
 
 from .backends.s3_backend import S3Backend, S3DataCollector
-from .helpers.encryption import encrypt_aes, encrypt_gpg
+from .helpers.encryption import encrypt_gpg, encrypt_aes
 from .helpers.metadata_file import BackupMetaReader
-from .util import SimpleFuture, UTC, none_if_keyerror, walk_files, default_block_size
+from .util import UTC, none_if_keyerror, walk_files, SimpleFuture, default_block_size
 
 
 logger = getLogger(__name__)
@@ -28,15 +28,39 @@ worker_count = cpu_count()
 
 
 def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
+    '''
+    Backup a directory to S3.
+
+    :param local_path: Path to the directory to be backed up.
+    :param backup_url: S3 URL where the backup will be stored.
+    :param s3_storage_class: S3 storage
+    :param encryption_recipients: List of GPG keys to encrypt the backup with.
+
+    This function will
+
+    - read previous backup metadata
+    - prepare new backup metadata file (in a temporary directory)
+    - walk the directory
+        - for each file or directory it will store its metadata (uid, gid, mode, mtime etc.)
+        - for each file it will call backup_file_contents()
+            - backup_file_contents() will read the file in blocks
+            - each block that was not part of previous backup will be compressed and encrypted
+            - new blocks are aggregated into larger files and uploaded to S3
+
+    Parallisation: This function runs linearly. Only the called function backup_file_contents() does its own thread pool.
+
+    '''
+    # TODO: this function could retrieve already configured backend object and encryption helper object
     assert isinstance(local_path, Path)
     assert isinstance(backup_url, str)
     assert isinstance(s3_storage_class, str)
     assert backup_url.startswith('s3://')
+    if not local_path.exists():
+        raise FileNotFoundError(local_path)
     with ExitStack() as stack:
         temp_dir = Path(stack.enter_context(TemporaryDirectory(prefix='baq.')))
         logger.info('Backing up %s to %s', local_path, backup_url)
         remote = S3Backend(backup_url, s3_storage_class)
-        assert local_path.is_dir()
 
         cache_name = hashlib.sha1(backup_url.encode()).hexdigest()
         cache_meta_path = cache_dir / cache_name / 'last-meta'
@@ -62,19 +86,54 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
                     logger.debug('write_meta: %s', obj_json)
                 meta_file.write(obj_json.encode('utf-8') + b'\n')
 
+        if local_path.is_block_device() or local_path.is_file():
+            single_file_mode = True
+            # This is a message to the restore code that the backup contains only one file.
+            # Therefore it can be restored to a specific path, like block device (LVM volume etc.).
+        elif local_path.is_dir():
+            single_file_mode = False
+            # This means that the backup must be restored to a directory.
+        else:
+            raise ValueError(f'Unsupported file type: {local_path}')
+
         write_meta({
             'baq_backup': {
                 'format_version': 1,
+                'backup_id': backup_id,
                 'block_size': block_size,
+                'single_file': single_file_mode,
             }
         })
 
-        for path in walk_files(local_path):
+        for n, path in enumerate([local_path] if single_file_mode else walk_files(local_path)):
             assert isinstance(path, Path)
-            relative_path = str(path.relative_to(local_path))
-            logger.debug('Processing %s', relative_path)
+
+            if single_file_mode:
+                assert n == 0
+                relative_path = str(path)
+            else:
+                relative_path = str(path.relative_to(local_path))
+
+            if path.is_fifo():
+                logger.info('Skipping %s - unsupported file type (fifo)', relative_path)
+                continue
+            elif path.is_socket():
+                logger.info('Skipping %s - unsupported file type (socket)', relative_path)
+                continue
+            elif path.is_char_device():
+                logger.info('Skipping %s - unsupported file type (char device)', relative_path)
+                continue
+
+            if path.is_symlink():
+                # If path is a symlink, then we are backing up its target.
+                # Which is good for database data dirs where symlinks can be used to move part of the data
+                # to a different disk/volume, but logically are still a part of the data dir.
+                # In future the symlink handling behavior could be made configurable.
+                # For example rsync has --copy-links option, which is our default behavior.
+                logger.info('Dereferencing symlink %s', relative_path)
 
             if path.is_dir():
+                logger.debug('Processing directory %s', relative_path)
                 st = path.stat()
                 write_meta({
                     'directory': {
@@ -85,9 +144,33 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
                         'st_uid': st.st_uid,
                         'st_gid': st.st_gid,
                         'st_mode': oct(st.st_mode),
-                        'owner': none_if_keyerror(lambda: path.owner()),
-                        'group': none_if_keyerror(lambda: path.group()),
+                        'owner': none_if_keyerror(path.owner),
+                        'group': none_if_keyerror(path.group),
                     }})
+
+            elif path.is_block_device():
+                if single_file_mode:
+                    logger.debug('Processing block device %s', relative_path)
+
+                    st = path.stat()
+                    write_meta({
+                        'file': {
+                            'path': relative_path,
+                            'st_mtime_ns': str(st.st_mtime_ns),
+                            'st_atime_ns': str(st.st_atime_ns),
+                            'st_ctime_ns': str(st.st_ctime_ns),
+                            'st_uid': st.st_uid,
+                            'st_gid': st.st_gid,
+                            'st_mode': oct(st.st_mode),
+                            'owner': none_if_keyerror(path.owner),
+                            'group': none_if_keyerror(path.group),
+                        }})
+                    backup_file_contents(
+                        path, write_meta, data_collector, previous_backup_meta,
+                        block_cache, block_cache_mutex, block_size)
+                else:
+                    logger.info('Skipping %s - unsupported file type (block device)', relative_path)
+
             elif path.is_file():
                 st = path.stat()
                 write_meta({
@@ -99,8 +182,8 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
                         'st_uid': st.st_uid,
                         'st_gid': st.st_gid,
                         'st_mode': oct(st.st_mode),
-                        'owner': none_if_keyerror(lambda: path.owner()),
-                        'group': none_if_keyerror(lambda: path.group()),
+                        'owner': none_if_keyerror(path.owner),
+                        'group': none_if_keyerror(path.group),
                     }})
                 backup_file_contents(
                     path, write_meta, data_collector, previous_backup_meta,
@@ -109,8 +192,9 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
                 st2 = path.stat()
                 if (st.st_mtime_ns, st.st_size) != (st2.st_mtime_ns, st2.st_size):
                     logger.info('File has changed while being backed up: %s', path)
+
             else:
-                logger.warning('Unsupported file type: %s', path)
+                logger.info('Skipping %s - unsupported file type', relative_path)
 
         data_collector.close()
         meta_file.close()

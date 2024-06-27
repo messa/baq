@@ -1,8 +1,13 @@
+
 from pathlib import Path
 from threading import Lock
 
 
 class TempDirDataCollector:
+    '''
+    Unused.
+    This class can be used in a file backend, or deleted.
+    '''
 
     def __init__(self, backup_id, temp_dir):
         assert isinstance(backup_id, str)

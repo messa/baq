@@ -12,6 +12,10 @@ logger = getLogger(__name__)
 
 
 def baq_main():
+    '''
+    Main entry point. Parse arguments and call the appropriate function.
+    '''
+    # TODO: add Sentry init if BAQ_SENTRY_DSN is set
     args = get_argument_parser().parse_args()
     setup_logging(verbose=args.verbose)
     setup_log_file(os.environ.get('BAQ_LOG_FILE'))
@@ -61,6 +65,7 @@ log_format = '%(asctime)s [%(process)d %(threadName)-10s] %(name)-10s %(levelnam
 def setup_logging(verbose):
     from logging import DEBUG, INFO, StreamHandler, Formatter
     getLogger('').setLevel(DEBUG)
+    getLogger('boto3.s3').setLevel(INFO)
     getLogger('botocore').setLevel(INFO)
     getLogger('s3transfer').setLevel(INFO)
     # log to stderr

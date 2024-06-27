@@ -1,16 +1,20 @@
 from datetime import datetime
-from logging import getLogger, INFO
-from warnings import filterwarnings
+from logging import getLogger, basicConfig, DEBUG, INFO
 from pytest import fixture
 import os
 from socket import getfqdn
 from uuid import uuid4
+from warnings import filterwarnings
 
 from baq.util import UTC
 
 
 logger = getLogger(__name__)
 
+
+basicConfig(
+    format='%(asctime)s [%(process)d] %(name)s %(levelname)5s: %(message)s',
+    level=DEBUG)
 
 getLogger('botocore').setLevel(INFO)
 
@@ -29,6 +33,11 @@ def ignore_deprecation_warnings():
 
 @fixture(scope='session')
 def test_session_id():
+    '''
+    Return a unique identifier for the current test session.
+
+    This is used to create a unique path in S3 bucket for each test run.
+    '''
     now = datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')
     if os.environ.get('GITHUB_ACTIONS'):
         print('GITHUB_ACTION:', os.environ.get('GITHUB_ACTION'))

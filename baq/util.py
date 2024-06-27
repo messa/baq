@@ -13,21 +13,23 @@ except ImportError:
 default_block_size = int(os.environ.get('BAQ_BLOCK_SIZE') or 128 * 1024)
 
 
-def none_if_keyerror(callable):
-    try:
-        return callable()
-    except KeyError:
-        return None
-
-
-def sha1_file(file_path):
+def sha1_file(file_path, length=None):
     with file_path.open('rb') as f:
         h = hashlib.sha1()
-        while True:
-            block = f.read(65536)
-            if not block:
-                break
-            h.update(block)
+        if length is None:
+            while True:
+                block = f.read(65536)
+                if not block:
+                    break
+                h.update(block)
+        else:
+            remaining = length
+            while remaining > 0:
+                block = f.read(min(remaining, 65536))
+                if not block:
+                    break
+                h.update(block)
+                remaining -= len(block)
         return h
 
 
@@ -40,13 +42,6 @@ def split(items, n):
             chunk = []
     if chunk:
         yield chunk
-
-
-def walk_files(path):
-    for p in sorted(path.iterdir()):
-        yield p
-        if p.is_dir():
-            yield from walk_files(p)
 
 
 class SimpleFuture:
@@ -83,3 +78,17 @@ class SimpleFuture:
     def waiting(self):
         with self._lock:
             return self._waiting
+
+
+def none_if_keyerror(callable):
+    try:
+        return callable()
+    except KeyError:
+        return None
+
+
+def walk_files(path):
+    for p in sorted(path.iterdir()):
+        yield p
+        if p.is_dir():
+            yield from walk_files(p)

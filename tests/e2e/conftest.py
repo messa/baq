@@ -2,10 +2,11 @@ from base64 import b64decode
 from dataclasses import dataclass
 from logging import getLogger
 import os
-from subprocess import STDOUT, check_call
-import zlib
+from pathlib import Path
 from pytest import fixture, skip
 import re
+from subprocess import STDOUT, check_call
+import zlib
 
 
 logger = getLogger(__name__)
@@ -28,10 +29,16 @@ def e2e_s3_config_factory(test_session_id):
         raise Exception('BAQ_E2E_S3_PREFIX has invalid format')
     bucket_name, path_prefix = m.groups()
     path_prefix = f'{path_prefix}/{test_session_id}/'.lstrip('/')
+    already_used_test_names = set()
 
-    yield lambda test_name: E2E_S3_Config(
-        bucket_name=bucket_name,
-        path_prefix=path_prefix + test_name + '/')
+    def the_e2e_s3_config_factory(test_name):
+        assert test_name not in already_used_test_names
+        already_used_test_names.add(test_name)
+        return E2E_S3_Config(
+            bucket_name=bucket_name,
+            path_prefix=path_prefix + test_name + '/')
+
+    yield the_e2e_s3_config_factory
 
     if os.environ.get('CI'):
         delete_s3_folder(bucket_name, path_prefix)
@@ -50,6 +57,30 @@ def delete_s3_folder(bucket_name, path):
 @fixture
 def e2e_s3_config(e2e_s3_config_factory, request):
     return e2e_s3_config_factory(test_name=request.node.name)
+
+
+@fixture
+def e2e_test_block_device_path():
+    '''
+    How to setup a block device for testing:
+
+    # Create a 1GB file
+    dd if=/dev/zero of=/tmp/test.img bs=1M count=10
+    # Create a loop device
+    sudo losetup -fP /tmp/test.img
+    # Use the loop device
+    export BAQ_E2E_TEST_BLOCK_DEVICE=$(sudo losetup -j /tmp/test.img | cut -d: -f1)
+    '''
+    if not os.environ.get('BAQ_E2E_TESTS'):
+        skip('E2E tests not enabled')
+    if not os.environ.get('BAQ_E2E_TEST_BLOCK_DEVICE'):
+        skip('BAQ_E2E_TEST_BLOCK_DEVICE not specified')
+    device_path = Path(os.environ['BAQ_E2E_TEST_BLOCK_DEVICE'])
+    logger.debug('e2e_test_block_device_path: %s', device_path)
+    assert device_path.is_block_device()
+    # This not really necessary, just a sanity check:
+    assert str(device_path).startswith('/dev/loop')
+    return device_path
 
 
 @fixture
@@ -74,13 +105,18 @@ def run_command():
     def do_run_command(cmd):
         assert isinstance(cmd, list)
         cmd = [str(part) for part in cmd]
-        print('Running', ' '.join(cmd))
+        print()
+        print('Running command:', ' '.join(cmd))
+        print('----------------')
+        print()
         check_call(cmd, stderr=STDOUT)
+        print()
+        print()
     return do_run_command
 
 
 @fixture
-def gnupghome(tmp_path, run_command, baq_e2e_test_gpg_key_id, baq_e2e_test_gpg_key_private):
+def gnupghome(tmp_path, baq_e2e_test_gpg_key_private, baq_e2e_test_gpg_key_id, run_command):
     gnupghome = tmp_path / '.gnupg'
     gnupghome.mkdir(mode=0o700)
 

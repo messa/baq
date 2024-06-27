@@ -56,6 +56,7 @@ class S3Backend:
         assert isinstance(dst_path, Path)
         assert not dst_path.exists()
         key = self.key_prefix + filename
+        logger.debug('Downloading file s3://%s/%s', self.bucket_name, key)
         s3_client = self._get_s3_client()
         s3_client.download_file(self.bucket_name, key, dst_path)
         logger.info('Downloaded file s3://%s/%s (%.2f MB)', self.bucket_name, key, dst_path.stat().st_size / 2**20)

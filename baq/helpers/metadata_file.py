@@ -72,6 +72,7 @@ class BackupMetaReader:
                     del f
                 else:
                     raise Exception(f'Unknown record: {record!r}')
+            self.contains_only_single_file = not self.directories and len(self.files) == 1
             logger.debug(
                 'Loaded backup metadata with %d files (%dk blocks) in %.3f s',
                 len(self.files), len(self.blocks) / 1000, monotime() - start_time)
