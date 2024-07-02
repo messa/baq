@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import ExitStack
 from datetime import datetime
 import gzip
@@ -17,7 +17,7 @@ import zstandard
 
 from .backends.s3_backend import S3Backend, S3DataCollector
 from .helpers.encryption import encrypt_gpg, encrypt_aes
-from .helpers.metadata_file import BackupMetaReader
+from .helpers.metadata_file import BackupMetaReader, FileBlock
 from .util import UTC, none_if_keyerror, walk_files, SimpleFuture, default_block_size
 
 
@@ -308,7 +308,7 @@ def backup_file_contents(path, write_meta, data_collector, previous_backup_meta,
                         already_existing_block_meta = block_cache.get(block_sha3)
 
                 if already_existing_block_meta:
-                    assert isinstance(already_existing_block_meta, BackupMetaReader.FileBlock)
+                    assert isinstance(already_existing_block_meta, FileBlock)
                     assert already_existing_block_meta.sha3 == block_sha3
                     write_meta({
                         'file_data': {
@@ -325,7 +325,7 @@ def backup_file_contents(path, write_meta, data_collector, previous_backup_meta,
                 else:
                     store_filename, store_offset = data_collector.store_block(block_encrypted_data)
                     with block_cache_mutex:
-                        block_cache[block_sha3] = BackupMetaReader.FileBlock(
+                        block_cache[block_sha3] = FileBlock(
                             offset=file_offset,
                             size=len(block_raw_data),
                             sha3=block_sha3,
@@ -355,6 +355,14 @@ def backup_file_contents(path, write_meta, data_collector, previous_backup_meta,
         whole_file_hash_fut = executor.submit(whole_file_hash_thread)
         store_fut = executor.submit(store_thread)
         encrypt_futs = [executor.submit(compress_and_encrypt_thread) for _ in range(worker_count)]
+        for fut in as_completed([read_thread_fut, whole_file_hash_fut, store_fut, *encrypt_futs]):
+            logger.debug('Backup file thread pool task done: %r', fut)
+            assert fut.done()
+            if fut.cancelled() or fut.exception():
+                logger.info('Backup file thread pool task failed, shutting down the thread pool: %r', fut)
+                # TODO: The tasks cannot detect the cancellation so the whole thing will probably get stuck.
+                executor.shutdown(wait=True, cancel_futures=True)
+                raise Exception(f'Backup failed - a thread pool task failed: {fut!r}')
         bytes_read = read_thread_fut.result()
         whole_file_hash_hex = whole_file_hash_fut.result()
         store_fut.result()

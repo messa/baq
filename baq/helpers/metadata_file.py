@@ -12,11 +12,20 @@ from ..util import default_block_size
 logger = getLogger(__name__)
 
 
-class BackupMetaReader:
+DirectoryMeta = namedtuple('DirectoryMeta', 'st_mtime_ns st_atime_ns st_mode st_uid st_gid owner group')
 
-    DirectoryMeta = namedtuple('DirectoryMeta', 'st_mtime_ns st_atime_ns st_mode st_uid st_gid owner group')
-    FileMeta = namedtuple('FileMeta', 'blocks st_mtime_ns st_atime_ns st_mode st_uid st_gid owner group original_size original_sha1')
-    FileBlock = namedtuple('FileBlock', 'offset size sha3 aes_key store_file store_offset store_size')
+FileMeta = namedtuple('FileMeta', 'blocks st_mtime_ns st_atime_ns st_mode st_uid st_gid owner group original_size original_sha1')
+
+FileBlock = namedtuple('FileBlock', 'offset size sha3 aes_key store_file store_offset store_size')
+
+
+def _intern(value):
+    if value is None:
+        return None
+    return intern(value)
+
+
+class BackupMetaReader:
 
     def __init__(self, meta_path):
         assert isinstance(meta_path, Path)
@@ -37,39 +46,52 @@ class BackupMetaReader:
                 except StopIteration:
                     break
                 if d := record.get('directory'):
-                    self.directories[d['path']] = self.DirectoryMeta(
-                        int(d['st_mtime_ns']), int(d['st_atime_ns']), int(d['st_mode'], 8), d['st_uid'], d['st_gid'],
-                        intern(d['owner']), intern(d['group']),
+                    self.directories[d['path']] = DirectoryMeta(
+                        st_mtime_ns=int(d['st_mtime_ns']),
+                        st_atime_ns=int(d['st_atime_ns']),
+                        st_mode=int(d['st_mode'], 8),
+                        st_uid=d['st_uid'],
+                        st_gid=d['st_gid'],
+                        owner=_intern(d['owner']),
+                        group=_intern(d['group']),
                     )
                     del d
                 elif f := record.get('file'):
                     file_blocks = []
-                    original_size, original_sha1 = None, None
+                    file_summary = None
                     while True:
                         file_record = next(records)
                         if fd := file_record.get('file_data'):
-                            file_block = self.FileBlock(
-                                int(fd['offset']), int(fd['size']),
-                                bytes.fromhex(fd['sha3']), bytes.fromhex(fd['aes_key']),
-                                intern(fd['store_file']), int(fd['store_offset']), int(fd['store_size']),
+                            file_block = FileBlock(
+                                offset=int(fd['offset']),
+                                size=int(fd['size']),
+                                sha3=bytes.fromhex(fd['sha3']),
+                                aes_key=bytes.fromhex(fd['aes_key']),
+                                store_file=intern(fd['store_file']),
+                                store_offset=int(fd['store_offset']),
+                                store_size=int(fd['store_size']),
                             )
                             file_blocks.append(file_block)
                             self.blocks[file_block.sha3] = file_block
                             del fd
-                        elif fs := file_record.get('file_summary'):
-                            original_size = fs['size']
-                            original_sha1 = bytes.fromhex(fs['sha1'])
-                            del fs
+                        elif file_summary := file_record.get('file_summary'):
                             break
                         else:
                             raise Exception(f'Unknown file record: {file_record!r}')
-                    self.files[f['path']] = self.FileMeta(
-                        file_blocks,
-                        int(f['st_mtime_ns']), int(f['st_atime_ns']), int(f['st_mode'], 8), f['st_uid'], f['st_gid'],
-                        intern(f['owner']), intern(f['group']),
-                        int(original_size), original_sha1,
+                    assert file_summary
+                    self.files[f['path']] = FileMeta(
+                        blocks=file_blocks,
+                        st_mtime_ns=int(f['st_mtime_ns']),
+                        st_atime_ns=int(f['st_atime_ns']),
+                        st_mode=int(f['st_mode'], 8),
+                        st_uid=f['st_uid'],
+                        st_gid=f['st_gid'],
+                        owner=_intern(f['owner']),
+                        group=_intern(f['group']),
+                        original_size=int(file_summary['size']),
+                        original_sha1=bytes.fromhex(file_summary['sha1']),
                     )
-                    del f
+                    del file_blocks, file_summary, f
                 else:
                     raise Exception(f'Unknown record: {record!r}')
             self.contains_only_single_file = not self.directories and len(self.files) == 1

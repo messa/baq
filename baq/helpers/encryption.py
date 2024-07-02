@@ -19,7 +19,9 @@ def encrypt_gpg(src_path, dst_path, recipients):
     logger.debug('Running %s', ' '.join(gpg_cmd))
     check_output(gpg_cmd)
     assert dst_path.is_file()
-    assert dst_path.stat().st_size
+    # GnuPG sometime suffers from race conditions inside GPG Agent and outputs an empty file.
+    # So let's check that the output file is not empty.
+    assert dst_path.stat().st_size > 0
 
 
 def decrypt_gpg(src_path, dst_path):

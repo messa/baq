@@ -11,7 +11,7 @@ from tempfile import TemporaryDirectory
 from threading import Lock, Semaphore
 import zstandard
 
-from .backup import BackupMetaReader
+from .backup import BackupMetaReader, FileBlock
 from .backends.s3_backend import S3Backend
 from .helpers.encryption import decrypt_aes, decrypt_gpg
 from .util import sha1_file, split
@@ -225,7 +225,7 @@ def restore_from_data_file(scan_sem, fetch_sem, remote, store_file_name, restore
                 write_futures = deque()
                 for n, ((original_path, block_meta), encrypted_data) in enumerate(zip(restore_blocks, retrieved_range_data), start=1):
                     assert isinstance(original_path, str)
-                    assert isinstance(block_meta, BackupMetaReader.FileBlock)
+                    assert isinstance(block_meta, FileBlock)
                     assert block_meta.store_file == store_file_name
                     assert isinstance(encrypted_data, bytes)
                     restore_path = get_restore_path(original_path)
