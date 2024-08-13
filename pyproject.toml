@@ -24,9 +24,8 @@ dependencies = [
 [project.scripts]
 baq = "baq:baq_main"
 
-[tool.setuptools]
-packages = ["baq"]
-
+[tool.setuptools.packages.find]
+include = ["baq", "baq.*"]
 
 [build-system]
 requires = ["setuptools>=43.0.0", "wheel"]
