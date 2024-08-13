@@ -82,3 +82,30 @@ jobs:
         sudo chown -v $(whoami) $BAQ_E2E_TEST_BLOCK_DEVICE
 
         python -m pytest -v --tb=native tests
+
+  build_venv:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Prepare venv
+      run: |
+        python -m venv baq_venv
+
+    - name: Install inside venv
+      run: |
+        baq_venv/bin/pip install .
+
+    - name: Check with --help
+      run: |
+        baq_venv/bin/baq --help
