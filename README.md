@@ -5,7 +5,7 @@ Installation
 ------------
 
 ```shell
-pip install https://github.com/messa/baq/archive/v1.0.6.zip
+pip install https://github.com/messa/baq/archive/v1.0.7.zip
 ```
 
 
