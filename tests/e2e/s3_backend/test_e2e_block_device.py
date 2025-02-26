@@ -58,7 +58,7 @@ def test_working_with_block_device(e2e_test_block_device_path):
     assert e2e_test_block_device_path.open('rb').read(6) != b'Hello\x00'
 
 
-def test_backup_from_block_device_and_restore_to_block_device(e2e_s3_config, tmp_path, e2e_test_block_device_path, gnupghome, run_command, list_s3_keys, baq_e2e_test_gpg_key_id):
+def test_backup_from_block_device_to_s3_backend_and_restore_to_block_device(e2e_s3_config, tmp_path, e2e_test_block_device_path, gnupghome, run_command, list_s3_keys, baq_e2e_test_gpg_key_id):
     fill_block_device_with_zeroes(e2e_test_block_device_path)
 
     # Write something to the block device

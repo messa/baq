@@ -1,7 +1,7 @@
 import sys
 
 
-def test_backup_and_restore_single_file(e2e_s3_config, tmp_path, run_command, list_s3_keys, gnupghome, baq_e2e_test_gpg_key_id):
+def test_backup_and_restore_single_file_to_s3_backend(e2e_s3_config, tmp_path, run_command, list_s3_keys, gnupghome, baq_e2e_test_gpg_key_id):
     src_dir = tmp_path / 'src'
     src_dir.mkdir()
     (src_dir / 'file1.txt').write_text('This is file1.txt\n')
