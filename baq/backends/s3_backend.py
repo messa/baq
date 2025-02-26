@@ -31,6 +31,12 @@ class S3Backend:
         self.key_prefix = self.key_prefix + '/' if self.key_prefix else ''
         self._thread_local = threading_local()
 
+    def get_cache_name(self):
+        return hashlib.sha1(f's3://{self.bucket_name}/{self.key_prefix}'.encode()).hexdigest()
+
+    def get_data_collector(self, backup_id):
+        return S3DataCollector(backup_id, self.bucket_name, self.key_prefix, self.storage_class)
+
     def _get_s3_client(self):
         try:
             return self._thread_local.s3_client

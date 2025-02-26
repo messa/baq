@@ -15,7 +15,6 @@ from tempfile import TemporaryDirectory
 from threading import Lock
 import zstandard
 
-from .backends.s3_backend import S3Backend, S3DataCollector
 from .helpers.encryption import encrypt_gpg, encrypt_aes
 from .helpers.metadata_file import BackupMetaReader, FileBlock
 from .util import UTC, none_if_keyerror, walk_files, SimpleFuture, default_block_size
@@ -27,13 +26,12 @@ cache_dir = Path(os.environ.get('BAQ_CACHE_DIR') or Path('~/.cache/baq').expandu
 worker_count = cpu_count()
 
 
-def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
+def do_backup(local_path, remote_backend, encryption_recipients):
     '''
     Backup a directory to S3.
 
     :param local_path: Path to the directory to be backed up.
-    :param backup_url: S3 URL where the backup will be stored.
-    :param s3_storage_class: S3 storage
+    :param remote_backend: Remote backend object.
     :param encryption_recipients: List of GPG keys to encrypt the backup with.
 
     This function will
@@ -48,21 +46,16 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
             - new blocks are aggregated into larger files and uploaded to S3
 
     Parallisation: This function runs linearly. Only the called function backup_file_contents() does its own thread pool.
-
     '''
-    # TODO: this function could retrieve already configured backend object and encryption helper object
+    # TODO: this function could retrieve already configured backend object (done) and encryption helper object
     assert isinstance(local_path, Path)
-    assert isinstance(backup_url, str)
-    assert isinstance(s3_storage_class, str)
-    assert backup_url.startswith('s3://')
     if not local_path.exists():
         raise FileNotFoundError(local_path)
     with ExitStack() as stack:
         temp_dir = Path(stack.enter_context(TemporaryDirectory(prefix='baq.')))
-        logger.info('Backing up %s to %s', local_path, backup_url)
-        remote = S3Backend(backup_url, s3_storage_class)
+        logger.info('Backing up %s to %s', local_path, remote_backend)
 
-        cache_name = hashlib.sha1(backup_url.encode()).hexdigest()
+        cache_name = remote_backend.get_cache_name()
         cache_meta_path = cache_dir / cache_name / 'last-meta'
 
         previous_backup_meta = BackupMetaReader(cache_meta_path) if cache_meta_path.is_file() else None
@@ -71,8 +64,7 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
         backup_id = datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')
         temp_meta_path = temp_dir / 'meta.wip'
         meta_file = stack.enter_context(gzip.open(temp_meta_path, 'wb'))
-        #data_collector = stack.enter_context(DataCollector(backup_id, temp_dir, remote))
-        data_collector = stack.enter_context(S3DataCollector(backup_id, remote.bucket_name, remote.key_prefix, remote.storage_class))
+        data_collector = stack.enter_context(remote_backend.get_data_collector(backup_id))
 
         block_cache = {}
         block_cache_mutex = Lock()

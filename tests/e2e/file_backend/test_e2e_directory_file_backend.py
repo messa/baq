@@ -1,4 +1,5 @@
 from logging import getLogger
+import os
 from pytest import skip
 import sys
 
@@ -7,7 +8,8 @@ logger = getLogger(__name__)
 
 
 def test_backup_and_restore_directory_to_file_backend(tmp_path, gnupghome, run_command, baq_e2e_test_gpg_key_id):
-    skip('TODO')
+    if not os.environ.get('BAQ_E2E_TESTS'):
+        skip('E2E tests not enabled')
 
     src_dir = tmp_path / 'src'
     src_dir.mkdir()
@@ -25,12 +27,13 @@ def test_backup_and_restore_directory_to_file_backend(tmp_path, gnupghome, run_c
         sys.executable, '-m', 'baq',
         '--verbose',
         'backup',
-        '--s3-storage-class', 'STANDARD',
         '--recipient', baq_e2e_test_gpg_key_id,
         str(src_dir),
-        # TODO f'file://{e2e_s3_config.bucket_name}/{e2e_s3_config.path_prefix}'
+        f'file://{tmp_path}/dst'
     ]
     run_command(backup_cmd)
+
+    skip('TODO')
 
     # s3_keys = list_s3_keys(e2e_s3_config.bucket_name, e2e_s3_config.path_prefix)
     # assert len(s3_keys) == 2

@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 import sys
 
+from .backends.s3_backend import S3Backend
+from .backends.file_backend import FileBackend
 from .backup import do_backup
 from .restore import do_restore
 
@@ -23,20 +25,30 @@ def baq_main():
         if args.action == 'backup':
             if not args.recipient:
                 sys.exit('No encryption recipients were specified')
+            remote_backend = get_backend(args.backup_url, args)
             do_backup(
                 Path(args.local_path).resolve(),
-                args.backup_url,
-                s3_storage_class=args.s3_storage_class,
+                remote_backend,
                 encryption_recipients=args.recipient)
         elif args.action == 'restore':
+            remote_backend = get_backend(args.backup_url, args)
             do_restore(
-                args.backup_url,
+                remote_backend,
                 Path(args.local_path).resolve())
         else:
             raise Exception('Invalid args.action')
     except BaseException as e:
         logger.exception('Failed: %r', e)
         sys.exit(f'Failed: {e}')
+
+
+def get_backend(backup_url, args):
+    if backup_url.startswith('s3://'):
+        return S3Backend(backup_url, storage_class=args.s3_storage_class)
+    elif backup_url.startswith('file://'):
+        return FileBackend(backup_url)
+    else:
+        raise Exception('Unsupported backup URL')
 
 
 def get_argument_parser():
