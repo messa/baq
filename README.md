@@ -54,7 +54,7 @@ Development
 ### Running E2E tests against AWS S3
 
 You need to have AWS credentials configured.
-The boto3 library can read credentials from enviroment variables `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
+The boto3 library can read credentials from environment variables `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
 or from file `~/.aws/credentials`.
 The required IAM permissions are `s3:ListBucket`, `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`.
 
