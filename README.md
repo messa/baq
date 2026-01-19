@@ -1,12 +1,51 @@
 Baq – incremental backup tool with compression and encryption
 =============================================================
 
+Baq is a Python-based backup tool that backs up files and block devices to AWS S3. It provides:
+
+- **Incremental backups** – Only changed blocks are uploaded, saving time and storage costs
+- **Compression** – Data is compressed using Zstandard (zstd) for efficient storage
+- **Encryption** – Backups are encrypted using GPG with recipient public keys
+- **AWS S3 support** – Backups are stored in S3 with configurable storage classes
+
+
 Installation
 ------------
 
 ```shell
 pip install https://github.com/messa/baq/archive/v1.0.7.zip
 ```
+
+
+Prerequisites
+-------------
+
+- Python 3.9 or newer
+- AWS credentials configured (via environment variables `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, or `~/.aws/credentials`)
+- GPG (gpg2) installed and configured with a recipient key
+
+
+Usage
+-----
+
+### Backup
+
+```shell
+baq backup /path/to/directory s3://bucket-name/backup-path -r RECIPIENT_KEY_ID
+```
+
+Options:
+- `-r`, `--recipient` – GPG recipient key ID for encryption (required, can be specified multiple times)
+- `--s3-storage-class` – S3 storage class (default: `STANDARD_IA`)
+- `-v`, `--verbose` – Enable verbose output
+
+### Restore
+
+```shell
+baq restore s3://bucket-name/backup-path/baq.TIMESTAMP.meta /path/to/restore
+```
+
+The backup URL should point to the `.meta` file. GPG must have access to the private key for decryption.
 
 
 Development
