@@ -16,6 +16,8 @@ try:
 except ImportError:
     boto3 = None
 
+from ..errors import IntegrityError
+
 
 logger = getLogger(__name__)
 
@@ -73,7 +75,10 @@ class S3Backend:
             Range=f'bytes={offset}-{offset+size-1}')
         content = res['Body'].read()
         assert isinstance(content, bytes)
-        assert len(content) == size
+        if len(content) != size:
+            raise IntegrityError(
+                f'S3 returned {len(content)} bytes for {filename} range {offset}-{offset+size-1}, '
+                f'expected {size}')
         return content
 
     def retrieve_file_ranges(self, filename, offset_size_list):
@@ -104,10 +109,15 @@ class S3Backend:
                 Range=f'bytes={offset_size_list[0][0]}-{consecutive_range_end-1}')
             while True:
                 offset, size = offset_size_list.popleft()
-                assert offset + size <= consecutive_range_end
+                if offset + size > consecutive_range_end:
+                    raise IntegrityError(
+                        f'Range overflow while reading {filename}: '
+                        f'offset {offset} + size {size} > end {consecutive_range_end}')
                 logger.debug('Reading offset %d size %d', offset, size)
                 data = res['Body'].read(size)
-                assert len(data) == size
+                if len(data) != size:
+                    raise IntegrityError(
+                        f'S3 stream for {filename} returned {len(data)} bytes, expected {size}')
                 yield data
                 if offset + size == consecutive_range_end:
                     break

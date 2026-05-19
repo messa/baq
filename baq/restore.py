@@ -13,6 +13,7 @@ import zstandard
 
 from .backup import BackupMetaReader, FileBlock
 from .backends.s3_backend import S3Backend
+from .errors import IntegrityError
 from .helpers.encryption import decrypt_aes, decrypt_gpg
 from .util import sha1_file, split
 
@@ -253,7 +254,10 @@ def write_restore_block(original_path, block_meta, store_file_name, encrypted_da
             store_file_name, block_meta.store_offset, block_meta.store_size)
         compressed_data = decrypt_aes(encrypted_data, block_meta.aes_key)
         original_data = zstandard.decompress(compressed_data)
-        assert hashlib.sha3_512(original_data).digest() == block_meta.sha3
+        if hashlib.sha3_512(original_data).digest() != block_meta.sha3:
+            raise IntegrityError(
+                f'SHA3-512 mismatch for block of {original_path} at offset {block_meta.offset} '
+                f'(from {store_file_name} offset {block_meta.store_offset})')
         with directory_mutex:
             if not restore_path.parent.exists():
                 logger.debug('Creating directory %s', restore_path.parent)

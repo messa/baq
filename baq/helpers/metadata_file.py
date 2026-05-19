@@ -37,9 +37,14 @@ class BackupMetaReader:
             logger.info('Reading previous backup metadata from %s', meta_path)
             records = (json.loads(line) for line in f)
             header = next(records)
-            assert header['baq_backup']['format_version'] == 1
+            format_version = header['baq_backup']['format_version']
+            if format_version != 1:
+                raise ValueError(f'Unsupported metadata format_version: {format_version!r}')
             self.block_size = header['baq_backup'].get('block_size', default_block_size)
-            assert isinstance(self.block_size, int)
+            if not isinstance(self.block_size, int):
+                raise ValueError(
+                    f'Invalid block_size in metadata header: {self.block_size!r} '
+                    f'(type {type(self.block_size).__name__})')
             while True:
                 try:
                     record = next(records)
