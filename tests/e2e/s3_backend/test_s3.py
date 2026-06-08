@@ -1,9 +1,13 @@
 from base64 import b64encode
 import boto3
 import hashlib
+import os
+from pytest import skip
 
 
 def test_s3_multipart_upload(e2e_s3_config):
+    if not os.environ.get('BAQ_E2E_REAL_S3'):
+        skip('Raw S3 multipart-upload API test only runs against real AWS S3')
     s3_bucket_name = e2e_s3_config.bucket_name
     s3_key = e2e_s3_config.path_prefix + 'testfile'
     print(f'{s3_bucket_name=}')

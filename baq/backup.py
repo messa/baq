@@ -68,7 +68,9 @@ def do_backup(local_path, backup_url, s3_storage_class, encryption_recipients):
         previous_backup_meta = BackupMetaReader(cache_meta_path) if cache_meta_path.is_file() else None
         block_size = previous_backup_meta.block_size if previous_backup_meta else default_block_size
 
-        backup_id = datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')
+        # Microsecond precision avoids collisions when two backups start within
+        # the same second (would otherwise overwrite each other's data/meta).
+        backup_id = datetime.now(UTC).strftime('%Y%m%dT%H%M%S%fZ')
         temp_meta_path = temp_dir / 'meta.wip'
         meta_file = stack.enter_context(gzip.open(temp_meta_path, 'wb'))
         #data_collector = stack.enter_context(DataCollector(backup_id, temp_dir, remote))

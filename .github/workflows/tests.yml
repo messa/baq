@@ -47,26 +47,30 @@ jobs:
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --show-source --statistics
 
-    - name: Test with pytest
+    - name: Test with pytest (incl. E2E tests against local moto S3)
+      env:
+        BAQ_E2E_TESTS: 1
       run: |
         python -m pytest -v --tb=native tests
 
-    - name: Run E2E tests
+    - name: Run E2E tests against real AWS S3
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         AWS_REGION: eu-west-1
         BAQ_E2E_TESTS: 1
+        BAQ_E2E_REAL_S3: 1
         BAQ_E2E_S3_PREFIX: ${{ vars.BAQ_E2E_S3_PREFIX }}
       run: |
         python -m pytest -v --tb=native tests
 
-    - name: Run E2E tests with a block device
+    - name: Run E2E tests against real AWS S3 with a block device
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         AWS_REGION: eu-west-1
         BAQ_E2E_TESTS: 1
+        BAQ_E2E_REAL_S3: 1
         BAQ_E2E_S3_PREFIX: ${{ vars.BAQ_E2E_S3_PREFIX }}
       run: |
         set -ex

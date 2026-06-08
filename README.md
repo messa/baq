@@ -51,15 +51,29 @@ The backup URL should point to the `.meta` file. GPG must have access to the pri
 Development
 -----------
 
-### Running E2E tests against AWS S3
+### Running E2E tests
 
+The E2E tests run the `baq` CLI against an S3 backend. By default they use a
+local, in-process [moto](https://github.com/getmoto/moto) S3 server, so they
+need neither AWS credentials nor network access:
+
+```
+BAQ_E2E_TESTS=1 make check
+```
+
+GPG (`gpg2`) must be installed for the E2E tests to run.
+
+### Running E2E tests against real AWS S3
+
+Set `BAQ_E2E_REAL_S3=1` to run the same tests against a real AWS S3 bucket
+instead of the local moto server.
 You need to have AWS credentials configured.
 The boto3 library can read credentials from environment variables `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
 or from file `~/.aws/credentials`.
 The required IAM permissions are `s3:ListBucket`, `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`.
 
 ```
-BAQ_E2E_TESTS=1 BAQ_E2E_S3_PREFIX=s3://sample-bucket/baq/tests make check
+BAQ_E2E_TESTS=1 BAQ_E2E_REAL_S3=1 BAQ_E2E_S3_PREFIX=s3://sample-bucket/baq/tests make check
 ```
 
 ### Simulating a block device
@@ -75,5 +89,5 @@ sudo losetup --associated /tmp/test.img
 Run tests:
 
 ```shell
-BAQ_E2E_TESTS=1 BAQ_E2E_S3_PREFIX=s3://.../... BAQ_E2E_TEST_BLOCK_DEVICE=/dev/loop0 make check
+BAQ_E2E_TESTS=1 BAQ_E2E_TEST_BLOCK_DEVICE=/dev/loop0 make check
 ```
